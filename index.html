@@ -1062,20 +1062,19 @@ async function saveEdit(i,sym){
   const cost=parseFloat(document.getElementById('ec-'+i).value);
   if(!isNaN(shares)&&shares>0&&!isNaN(cost)&&cost>=0){
     await savePosition(sym,shares,cost);
-    renderPortfolio();
+    await renderPortfolio();
   }
 }
 async function removePosition(sym){
-  if(!confirm(`Remove ${sym}?`))return;
+  if(!confirm('Remove '+sym+'?'))return;
   await deletePosition(sym);
-  renderPortfolio();
+  await renderPortfolio();
 }
 async function addPosition(){
   const sym=document.getElementById('port-sym').value.trim().toUpperCase();
   const shares=parseFloat(document.getElementById('port-shares').value);
   const cost=parseFloat(document.getElementById('port-cost').value);
   if(!sym||isNaN(shares)||shares<=0||isNaN(cost)||cost<0)return;
-  // If already owned, blend the average
   const existing=portfolio.find(p=>p.sym===sym);
   if(existing){
     const t=existing.shares+shares;
@@ -1085,7 +1084,7 @@ async function addPosition(){
     await savePosition(sym,shares,cost);
   }
   ['port-sym','port-shares','port-cost'].forEach(id=>document.getElementById(id).value='');
-  renderPortfolio();
+  await renderPortfolio();
 }
 
 async function renderWatching(){
@@ -1111,14 +1110,14 @@ async function addWatching(){
   if(!v||watching.find(w=>w.sym===v)||portfolio.find(p=>p.sym===v))return;
   await saveWatchItem(v);
   document.getElementById('watch-input').value='';
-  renderWatching();
+  await renderWatching();
 }
 async function addWatchingDirect(sym){
   if(!watching.find(w=>w.sym===sym)&&!portfolio.find(p=>p.sym===sym)){
     await saveWatchItem(sym);
   }
 }
-async function removeWatching(sym){await deleteWatchItem(sym);renderWatching();}
+async function removeWatching(sym){await deleteWatchItem(sym);await renderWatching();}
 
 // ── NEWS ──────────────────────────────────────────────────────────────
 async function loadNews(){
