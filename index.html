@@ -505,10 +505,17 @@ async function loadUserData() {
 
 async function savePosition(sym, shares, avgCost) {
   if (!currentUser) return;
-  await sb.from('portfolios').upsert(
-    { user_id: currentUser.id, sym, shares, avg_cost: avgCost },
-    { onConflict: 'user_id,sym' }
-  );
+  // Try update first, then insert if no row exists
+  const { data: existing } = await sb.from('portfolios')
+    .select('id').eq('user_id', currentUser.id).eq('sym', sym).single();
+  if (existing) {
+    await sb.from('portfolios')
+      .update({ shares, avg_cost: avgCost })
+      .eq('user_id', currentUser.id).eq('sym', sym);
+  } else {
+    await sb.from('portfolios')
+      .insert({ user_id: currentUser.id, sym, shares, avg_cost: avgCost });
+  }
   await loadUserData();
 }
 
@@ -520,10 +527,12 @@ async function deletePosition(sym) {
 
 async function saveWatchItem(sym) {
   if (!currentUser) return;
-  await sb.from('watchlists').upsert(
-    { user_id: currentUser.id, sym },
-    { onConflict: 'user_id,sym' }
-  );
+  const { data: existing } = await sb.from('watchlists')
+    .select('id').eq('user_id', currentUser.id).eq('sym', sym).single();
+  if (!existing) {
+    await sb.from('watchlists')
+      .insert({ user_id: currentUser.id, sym });
+  }
   await loadUserData();
 }
 
