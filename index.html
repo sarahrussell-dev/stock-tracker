@@ -517,15 +517,19 @@ async function doSignup() {
 }
 
 async function doLogout() {
-  const token = currentUser?._accessToken || SUPABASE_ANON;
-  await fetch(SUPABASE_URL + '/auth/v1/logout', {
-    method: 'POST',
-    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
-  });
+  // Clear all local state
   currentUser = null;
-  portfolio = []; watching = [];
+  portfolio = [];
+  watching = [];
+  chatHistory = [];
+  // Clear Supabase session from localStorage
+  Object.keys(localStorage).forEach(k => {
+    if (k.includes('supabase') || k.includes('sb-')) localStorage.removeItem(k);
+  });
   document.getElementById('auth-screen').style.display = 'flex';
   document.getElementById('app-shell').style.display = 'none';
+  document.getElementById('auth-error').textContent = '';
+  document.getElementById('auth-msg').textContent = '';
 }
 
 // Auth state handled directly via doLogin/doSignup/doLogout
