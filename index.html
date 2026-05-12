@@ -431,6 +431,14 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: {
     persistSession: true,
     autoRefreshToken: true
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 0
+    }
+  },
+  global: {
+    fetch: window.fetch.bind(window)
   }
 });
 let currentUser = null;
@@ -481,6 +489,7 @@ async function doLogout() {
 sb.auth.onAuthStateChange(async (event, session) => {
   if (session?.user) {
     currentUser = session.user;
+    currentUser._accessToken = session.access_token;
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-shell').style.display = 'block';
     document.getElementById('user-email-display').textContent = currentUser.email;
@@ -497,53 +506,106 @@ sb.auth.onAuthStateChange(async (event, session) => {
   }
 });
 
-// ── SUPABASE DATA ─────────────────────────────────────────────────────
+// ── SUPABASE DATA — direct REST API (bypasses JS client which has fetch issues) ──
+const SB_HEADERS = () => ({
+  'Content-Type': 'application/json',
+  'apikey': SUPABASE_ANON,
+  'Authorization': 'Bearer ' + (currentUser?._accessToken || SUPABASE_ANON),
+  'Prefer': 'return=representation'
+});
+const SB_REST = SUPABASE_URL + '/rest/v1';
+
+async function getAccessToken() {
+  const { data } = await sb.auth.getSession();
+  return data?.session?.access_token || SUPABASE_ANON;
+}
+
+async function sbFetch(method, table, body, query) {
+  const token = await getAccessToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_ANON,
+    'Authorization': 'Bearer ' + token,
+    'Prefer': 'return=representation'
+  };
+  const url = SB_REST + '/' + table + (query ? '?' + query : '');
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    const err = await r.text();
+    console.error('Supabase error:', err);
+    return null;
+  }
+  const text = await r.text();
+  return text ? JSON.parse(text) : null;
+}
+
 async function loadUserData() {
   if (!currentUser) return;
-  const [{ data: port }, { data: watch }] = await Promise.all([
-    sb.from('portfolios').select('*').eq('user_id', currentUser.id),
-    sb.from('watchlists').select('*').eq('user_id', currentUser.id)
+  const token = await getAccessToken();
+  const headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token };
+  const [portRes, watchRes] = await Promise.all([
+    fetch(SB_REST + '/portfolios?user_id=eq.' + currentUser.id, { headers }),
+    fetch(SB_REST + '/watchlists?user_id=eq.' + currentUser.id, { headers })
   ]);
-  portfolio = (port || []).map(r => ({ sym: r.sym, shares: r.shares, avgCost: r.avg_cost, id: r.id }));
-  watching = (watch || []).map(r => ({ sym: r.sym, id: r.id }));
+  const port = portRes.ok ? await portRes.json() : [];
+  const watch = watchRes.ok ? await watchRes.json() : [];
+  portfolio = port.map(r => ({ sym: r.sym, shares: r.shares, avgCost: r.avg_cost, id: r.id }));
+  watching = watch.map(r => ({ sym: r.sym, id: r.id }));
 }
 
 async function savePosition(sym, shares, avgCost) {
   if (!currentUser) return;
-  // Try update first, then insert if no row exists
-  const { data: existing } = await sb.from('portfolios')
-    .select('id').eq('user_id', currentUser.id).eq('sym', sym).single();
-  if (existing) {
-    await sb.from('portfolios')
-      .update({ shares, avg_cost: avgCost })
-      .eq('user_id', currentUser.id).eq('sym', sym);
-  } else {
-    await sb.from('portfolios')
-      .insert({ user_id: currentUser.id, sym, shares, avg_cost: avgCost });
-  }
+  const token = await getAccessToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_ANON,
+    'Authorization': 'Bearer ' + token,
+    'Prefer': 'resolution=merge-duplicates,return=representation'
+  };
+  await fetch(SB_REST + '/portfolios', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ user_id: currentUser.id, sym, shares, avg_cost: avgCost })
+  });
   await loadUserData();
 }
 
 async function deletePosition(sym) {
   if (!currentUser) return;
-  await sb.from('portfolios').delete().eq('user_id', currentUser.id).eq('sym', sym);
+  const token = await getAccessToken();
+  const headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token };
+  await fetch(SB_REST + '/portfolios?user_id=eq.' + currentUser.id + '&sym=eq.' + sym, {
+    method: 'DELETE', headers
+  });
   await loadUserData();
 }
 
 async function saveWatchItem(sym) {
   if (!currentUser) return;
-  const { data: existing } = await sb.from('watchlists')
-    .select('id').eq('user_id', currentUser.id).eq('sym', sym).single();
-  if (!existing) {
-    await sb.from('watchlists')
-      .insert({ user_id: currentUser.id, sym });
-  }
+  const token = await getAccessToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_ANON,
+    'Authorization': 'Bearer ' + token,
+    'Prefer': 'resolution=merge-duplicates,return=representation'
+  };
+  await fetch(SB_REST + '/watchlists', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ user_id: currentUser.id, sym })
+  });
   await loadUserData();
 }
 
 async function deleteWatchItem(sym) {
   if (!currentUser) return;
-  await sb.from('watchlists').delete().eq('user_id', currentUser.id).eq('sym', sym);
+  const token = await getAccessToken();
+  const headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token };
+  await fetch(SB_REST + '/watchlists?user_id=eq.' + currentUser.id + '&sym=eq.' + sym, {
+    method: 'DELETE', headers
+  });
   await loadUserData();
 }
 
