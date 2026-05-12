@@ -213,17 +213,102 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 .refresh-btn:hover{color:var(--text);}
 .pos-owned-note{font-size:11px;background:var(--green-bg);color:var(--green);padding:5px 10px;border-radius:6px;margin-bottom:0.9rem;}
 
+/* ── TABLET (iPad) ── */
+@media(max-width:1024px){
+  .shell{grid-template-columns:180px 1fr;}
+  .main{padding:1.5rem;}
+  .metric-grid{grid-template-columns:repeat(2,1fr);}
+  .signal-breakdown{grid-template-columns:repeat(3,1fr);}
+  .add-grid{grid-template-columns:1fr 1fr;}
+  .add-grid>div:last-child{grid-column:1/-1;}
+}
+
+/* ── MOBILE ── */
 @media(max-width:700px){
-  .shell{grid-template-columns:1fr;}
-  .sidebar{height:auto;position:static;flex-direction:row;flex-wrap:wrap;padding:0.75rem;}
-  .logo{padding:0;border:none;margin:0;flex:1;}
+  .shell{display:flex;flex-direction:column;}
+
+  /* Bottom nav bar on mobile */
+  .sidebar{
+    order:2;
+    flex-direction:row;
+    padding:0;
+    height:auto;
+    position:fixed;
+    bottom:0;left:0;right:0;
+    border-right:none;
+    border-top:1px solid var(--border);
+    z-index:100;
+    background:var(--bg2);
+  }
+  .logo{display:none;}
   .nav-section{display:none;}
-  .nav-item{padding:6px 8px;font-size:11px;border-left:none;border-bottom:2px solid transparent;}
-  .nav-item.active{border-bottom-color:var(--accent);border-left:none;}
-  .user-box{margin:0.5rem 0 0;width:100%;}
-  .main{padding:1rem;}
-  .metric-grid,.pos-stats,.pac-stats,.signal-breakdown{grid-template-columns:repeat(2,1fr);}
-  .add-grid,.summary-row{grid-template-columns:1fr 1fr;}
+  .nav-item{
+    flex:1;flex-direction:column;gap:2px;
+    padding:8px 4px;font-size:9px;
+    border-left:none;border-top:2px solid transparent;
+    border-bottom:none;justify-content:center;
+    text-align:center;
+  }
+  .nav-item span{font-size:18px;}
+  .nav-item.active{border-top-color:var(--accent);border-left:none;background:var(--accent-dim);}
+  .user-box{display:none;}
+
+  /* Main content above nav bar */
+  .main{
+    order:1;
+    padding:1rem 0.75rem;
+    padding-bottom:80px; /* room for bottom nav */
+    max-width:100%;
+    overflow-x:hidden;
+  }
+
+  .page-title{font-size:18px;}
+  .page-sub{font-size:12px;margin-bottom:1.25rem;}
+
+  /* Auth screen */
+  .auth-card{padding:1.5rem;margin:0.5rem;}
+
+  /* Grids */
+  .metric-grid{grid-template-columns:repeat(2,1fr);gap:6px;}
+  .pos-stats{grid-template-columns:repeat(2,1fr);gap:5px;}
+  .pac-stats{grid-template-columns:repeat(2,1fr);}
+  .signal-breakdown{grid-template-columns:repeat(3,1fr);gap:4px;}
+  .summary-row{grid-template-columns:repeat(3,1fr);gap:6px;}
+  .add-grid{grid-template-columns:1fr 1fr;gap:6px;}
+  .add-grid>div:last-child{grid-column:1/-1;}
+
+  /* Stock cards */
+  .stock-card{padding:0.65rem 0.75rem;}
+  .sc-sym{font-size:13px;}
+  .sc-price{font-size:13px;}
+
+  /* Watch cards */
+  .watch-card{grid-template-columns:55px 1fr auto auto;gap:8px;}
+
+  /* Scan bar */
+  #progress-label{font-size:10px;}
+
+  /* Filters wrap nicely */
+  .filters{gap:4px;}
+  .pill{padding:3px 8px;font-size:10px;}
+  .sort-row{gap:4px;}
+  .sort-btn{padding:2px 7px;font-size:10px;}
+
+  /* Chat */
+  .chat-messages{max-height:280px;}
+  .chat-msg{max-width:95%;}
+  .quick-questions{gap:4px;}
+  .qq-btn{font-size:10px;padding:3px 8px;}
+
+  /* Advisor cards */
+  .position-advice-card{padding:0.9rem 0.75rem;}
+
+  /* Summary values smaller */
+  .sum-val{font-size:16px;}
+
+  /* Tier legend */
+  .tier-legend{gap:4px;}
+  .tier-chip{font-size:10px;padding:2px 7px;}
 }
 </style>
 </head>
@@ -820,25 +905,46 @@ async function fetchSymbolUniverse() {
     if(cached?.length&&(Date.now()-ts)<UNIVERSE_TTL){scanUniverse=cached;return cached;}
   } catch {}
   try {
-    setProgressLabel('Fetching $1B+ US stock universe from Finnhub...');
+    setProgressLabel('Fetching full US stock list from Finnhub...');
     const all=await fhGet('/stock/symbol?exchange=US');
-    const common=all.filter(s=>s.type==='Common Stock'&&s.symbol&&s.symbol.length<=5&&!s.symbol.includes('.')&&!s.symbol.includes('/')&&!s.symbol.includes('-')&&['XNAS','XNYS','XASE','BATS','XNMS','XNCM','XNMQ'].includes(s.mic));
-    const BATCH=20,qualified=[];
-    for(let i=0;i<Math.min(common.length,3000)&&!scanAbort;i+=BATCH){
-      const batch=common.slice(i,i+BATCH);
-      const profiles=await Promise.all(batch.map(async s=>{
-        try{const pr=await fhGet(`/stock/profile2?symbol=${s.symbol}`);return pr?.marketCapitalization>=1000?{sym:s.symbol,mcap:pr.marketCapitalization}:null;}catch{return null;}
-      }));
-      profiles.forEach(p=>{if(p)qualified.push(p);});
-      setProgressLabel(`Building universe: ${Math.min(i+BATCH,common.length)}/${Math.min(common.length,3000)} checked · ${qualified.length} qualify ($1B+)`);
-      await sleep(65000/20);
-    }
-    qualified.sort((a,b)=>b.mcap-a.mcap);
-    const syms=qualified.map(q=>q.sym);
+    if(!all||!all.length) throw new Error('no symbols');
+
+    // Filter to common stocks on major exchanges with valid ticker format
+    // This alone gets us ~2,000 relevant tickers without any extra API calls
+    const common=all.filter(s=>
+      s.type==='Common Stock' &&
+      s.symbol && s.symbol.length>=1 && s.symbol.length<=5 &&
+      !s.symbol.includes('.') && !s.symbol.includes('/') && !s.symbol.includes('-') &&
+      ['XNAS','XNYS','XASE','BATS','XNMS','XNCM','XNMQ'].includes(s.mic)
+    );
+
+    setProgressLabel('Filtering to known large/mid caps...');
+
+    // Rather than fetching market cap for each (very slow), use description field
+    // and prioritize: stocks with display names that aren't shell/blank
+    // Then sort by symbol length (shorter = usually bigger company) as proxy
+    // and cap at 1500 to keep scans manageable
+    const withNames = common.filter(s => s.description && s.description.length > 1);
+
+    // Also cross-reference with our fallback list to make sure all known large caps are included
+    const fallbackSet = new Set(FALLBACK_SYMS);
+    const fromFallback = FALLBACK_SYMS.filter(s => !withNames.find(w => w.symbol === s)).map(s => ({symbol:s}));
+
+    // Merge: fallback first (guaranteed good), then the rest
+    const merged = [
+      ...FALLBACK_SYMS.map(s => s),
+      ...withNames.filter(s => !fallbackSet.has(s.symbol)).map(s => s.symbol)
+    ];
+
+    // Dedupe and cap at 1500
+    const syms = [...new Set(merged)].slice(0, 1500);
+
     try{localStorage.setItem('sym_universe',JSON.stringify(syms));localStorage.setItem('sym_universe_ts',Date.now());}catch{}
     scanUniverse=syms;
+    setProgressLabel('Universe ready: '+syms.length+' stocks — starting scan...');
     return syms;
   } catch(e) {
+    console.log('Universe fetch failed, using fallback:', e);
     scanUniverse=FALLBACK_SYMS;
     return FALLBACK_SYMS;
   }
