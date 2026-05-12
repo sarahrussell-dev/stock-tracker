@@ -530,6 +530,33 @@ async function doLogout() {
 
 // Auth state handled directly via doLogin/doSignup/doLogout
 
+// Restore existing session on page load
+(async function restoreSession() {
+  try {
+    // Check localStorage for existing Supabase session
+    const keys = Object.keys(localStorage).filter(k => k.includes('supabase') || k.includes('sb-'));
+    let session = null;
+    for (const k of keys) {
+      try {
+        const val = JSON.parse(localStorage.getItem(k));
+        if (val?.access_token && val?.user) { session = val; break; }
+        if (val?.currentSession?.access_token) { session = val.currentSession; break; }
+      } catch {}
+    }
+    if (session?.access_token && session?.user) {
+      currentUser = session.user;
+      currentUser._accessToken = session.access_token;
+      document.getElementById('auth-screen').style.display = 'none';
+      document.getElementById('app-shell').style.display = 'block';
+      document.getElementById('user-email-display').textContent = currentUser.email;
+      document.getElementById('live-dot').style.display = 'inline-block';
+      await loadUserData();
+      loadCachedScan();
+      renderTrends('all');
+    }
+  } catch(e) { console.log('session restore error:', e); }
+})();
+
 // ── SUPABASE DATA — direct REST API (bypasses JS client which has fetch issues) ──
 const SB_HEADERS = () => ({
   'Content-Type': 'application/json',
@@ -539,12 +566,12 @@ const SB_HEADERS = () => ({
 });
 const SB_REST = SUPABASE_URL + '/rest/v1';
 
-async function getAccessToken() {
+function getAccessToken() {
   return currentUser?._accessToken || SUPABASE_ANON;
 }
 
 async function sbFetch(method, table, body, query) {
-  const token = await getAccessToken();
+  const token = getAccessToken();
   const headers = {
     'Content-Type': 'application/json',
     'apikey': SUPABASE_ANON,
@@ -566,7 +593,7 @@ async function sbFetch(method, table, body, query) {
 
 async function loadUserData() {
   if (!currentUser) return;
-  const token = await getAccessToken();
+  const token = getAccessToken();
   const headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token };
   const [portRes, watchRes] = await Promise.all([
     fetch(SB_REST + '/portfolios?user_id=eq.' + currentUser.id, { headers }),
@@ -580,7 +607,7 @@ async function loadUserData() {
 
 async function savePosition(sym, shares, avgCost) {
   if (!currentUser) return;
-  const token = await getAccessToken();
+  const token = getAccessToken();
   const headers = {
     'Content-Type': 'application/json',
     'apikey': SUPABASE_ANON,
@@ -597,7 +624,7 @@ async function savePosition(sym, shares, avgCost) {
 
 async function deletePosition(sym) {
   if (!currentUser) return;
-  const token = await getAccessToken();
+  const token = getAccessToken();
   const headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token };
   await fetch(SB_REST + '/portfolios?user_id=eq.' + currentUser.id + '&sym=eq.' + sym, {
     method: 'DELETE', headers
@@ -607,7 +634,7 @@ async function deletePosition(sym) {
 
 async function saveWatchItem(sym) {
   if (!currentUser) return;
-  const token = await getAccessToken();
+  const token = getAccessToken();
   const headers = {
     'Content-Type': 'application/json',
     'apikey': SUPABASE_ANON,
@@ -624,7 +651,7 @@ async function saveWatchItem(sym) {
 
 async function deleteWatchItem(sym) {
   if (!currentUser) return;
-  const token = await getAccessToken();
+  const token = getAccessToken();
   const headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token };
   await fetch(SB_REST + '/watchlists?user_id=eq.' + currentUser.id + '&sym=eq.' + sym, {
     method: 'DELETE', headers
