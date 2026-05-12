@@ -875,7 +875,9 @@ async function analyzeStock(){
     </div>`;
   try{
     const posNote = pos ? ' User owns '+pos.shares+' shares at avg $'+pos.avgCost+'.' : '';
-    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:1200,system:'You are a concise stock analyst with multi-factor data. Give a 4-5 sentence analysis: what the composite score reflects across factors, biggest fundamental strengths/weaknesses, what insider activity suggests, and whether the price looks attractive. Be specific and direct. No disclaimers.',messages:[{role:'user',content:`Analyze ${sym} (${s.name}). Composite: ${s.score}/100 (${getTierLabel(s.score)}). Factors: Analyst=${s.scores?.analyst??'N/A'}, Fundamentals=${s.scores?.fundamental??'N/A'}, Earnings=${s.scores?.earnings??'N/A'}, Insider=${s.scores?.insider??'N/A'}, Price Pos=${s.scores?.price??'N/A'}. Price: $${s.price}, Daily: ${fmt(s.changePct||0)}, 52W: $${s.low52??'?'}–$${s.high52??'?'}. P/E: ${s.pe??'N/A'}, Rev growth: ${s.revenueGrowth?.toFixed(1)??'N/A'}%, EPS growth: ${s.epsGrowth?.toFixed(1)??'N/A'}%, Net margin: ${s.netMargin?.toFixed(1)??'N/A'}%, ROE: ${s.roe?.toFixed(1)??'N/A'}%, D/E: ${s.debtEquity?.toFixed(2)??'N/A'}. Div yield: ${s.divYield??'0'}%. Insider: ${s.insiderBuying||0} buys, ${s.insiderSelling||0} sells (6mo). Last earnings surprise: ${s.lastEarningsSurprise??'N/A'}%. Sector: ${s.sector}.${posNote}`}]});
+    const sa = s.scores?.analyst||'N/A', sf = s.scores?.fundamental||'N/A', se = s.scores?.earnings||'N/A', si = s.scores?.insider||'N/A', sp = s.scores?.price||'N/A';
+    const researchPrompt = 'Analyze '+sym+' ('+s.name+'). Composite: '+s.score+'/100 ('+getTierLabel(s.score)+'). Factors: Analyst='+sa+', Fundamentals='+sf+', Earnings='+se+', Insider='+si+', Price Pos='+sp+'. Price: $'+s.price+', Daily: '+fmt(s.changePct||0)+', 52W: $'+(s.low52||'?')+'–$'+(s.high52||'?')+'. P/E: '+(s.pe||'N/A')+', Rev growth: '+(s.revenueGrowth!=null?s.revenueGrowth.toFixed(1):'N/A')+'%, EPS growth: '+(s.epsGrowth!=null?s.epsGrowth.toFixed(1):'N/A')+'%, Net margin: '+(s.netMargin!=null?s.netMargin.toFixed(1):'N/A')+'%, ROE: '+(s.roe!=null?s.roe.toFixed(1):'N/A')+'%, D/E: '+(s.debtEquity!=null?s.debtEquity.toFixed(2):'N/A')+'. Div yield: '+(s.divYield||'0')+'%. Insider: '+(s.insiderBuying||0)+' buys, '+(s.insiderSelling||0)+' sells (6mo). Last earnings surprise: '+(s.lastEarningsSurprise||'N/A')+'%. Sector: '+s.sector+'.'+posNote;
+    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:1200,system:'You are a concise stock analyst with multi-factor data. Give a 4-5 sentence analysis: what the composite score reflects across factors, biggest fundamental strengths/weaknesses, what insider activity suggests, and whether the price looks attractive. Be specific and direct. No disclaimers.',messages:[{role:'user',content:researchPrompt}]});
     
     document.getElementById('ai-output').textContent=data.content?.[0]?.text||'Analysis unavailable.';
     document.getElementById('ai-spin')?.remove();
@@ -948,7 +950,9 @@ async function runFullAdvisor(){
     card.innerHTML=`<div class="pac-header"><div><div class="pac-sym">${p.sym}<span class="badge ${badgeCls(s.score)}" style="margin-left:8px">${getTierLabel(s.score)}</span></div><div style="font-size:11px;color:var(--text2);margin-top:3px">${s.name||p.sym}</div></div><div class="pac-verdict" id="verdict-${p.sym}">⏳ analyzing...</div></div>${s.scores?signalBreakdownHTML(s.scores):''}<div class="pac-stats"><div class="stat-box"><div class="stat-label">Your P&L</div><div class="stat-val ${pl>=0?'pos':'neg'}">${fmtD(pl)} (${plp>=0?'+':''}${plp.toFixed(1)}%)</div></div><div class="stat-box"><div class="stat-label">Mkt value</div><div class="stat-val">${fmtD(mv)}</div></div><div class="stat-box"><div class="stat-label">Composite</div><div class="stat-val" style="color:${getTierColor(s.score)}">${s.score}/100</div></div></div><div class="pac-reasoning" id="reasoning-${p.sym}"><span class="spinner"></span> Getting analysis...</div>`;
     posDiv.appendChild(card);
     try{
-      const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:600,system:ADVISOR_SYSTEM,messages:[{role:'user',content:'Portfolio:\n'+ctx+'\n\nFocus on '+p.sym+'. Owns '+p.shares+' shares at avg $'+p.avgCost+'. Current $'+(s.price||'?')+'. P&L: '+(plp>=0?'+':'')+plp.toFixed(1)+'%. Composite: '+s.score+'/100. Factors: A='+(s.scores?.analyst??'N/A')+' F='+(s.scores?.fundamental??'N/A')+' E='+(s.scores?.earnings??'N/A')+' I='+(s.scores?.insider??'N/A')+' P='+(s.scores?.price??'N/A')+'.\n\nVerdict (HOLD/SELL/ADD/TRIM) and 2-3 sentences. Start with verdict in caps.'}]);
+      const fa = s.scores?.analyst||'N/A', ff = s.scores?.fundamental||'N/A', fe = s.scores?.earnings||'N/A', fi = s.scores?.insider||'N/A', fp = s.scores?.price||'N/A';
+      const advisorPrompt = 'Portfolio:\n'+ctx+'\n\nFocus on '+p.sym+'. Owns '+p.shares+' shares at avg $'+p.avgCost+'. Current $'+(s.price||'?')+'. P&L: '+(plp>=0?'+':'')+plp.toFixed(1)+'%. Composite: '+s.score+'/100. Factors: A='+fa+' F='+ff+' E='+fe+' I='+fi+' P='+fp+'.\n\nVerdict (HOLD/SELL/ADD/TRIM) and 2-3 sentences. Start with verdict in caps.';
+      const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:600,system:ADVISOR_SYSTEM,messages:[{role:'user',content:advisorPrompt}]});
       const text=data.content?.[0]?.text||'Analysis unavailable.';
       const firstWord=text.split(/[\s\n]/)[0].replace(/[^A-Z]/g,'');
       const vEl=document.getElementById('verdict-'+p.sym);const rEl=document.getElementById('reasoning-'+p.sym);
@@ -967,7 +971,9 @@ async function runHealthCheck(){
   let tv=0;const sectors={};
   stocks.forEach((s,i)=>{const v=(s?.price||0)*portfolio[i].shares;tv+=v;const sec=s?.sector||'Unknown';sectors[sec]=(sectors[sec]||0)+v;});
   try{
-    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:800,system:ADVISOR_SYSTEM,messages:[{role:'user',content:'Portfolio:\n'+ctx+'\n\nTotal: $'+tv.toFixed(0)+'\nSectors: '+Object.entries(sectors).map(([k,v])=>k+': '+((v/tv)*100).toFixed(0)+'%').join(', ')+'\n\nHealth score out of 100, then bullet-point: diversification, concentration risks, weak factor scores across positions, biggest red flag, one actionable step. Start with "SCORE: XX".'}]);
+    const sectorStr = Object.keys(sectors).map(function(k){return k+': '+((sectors[k]/tv)*100).toFixed(0)+'%';}).join(', ');
+    const healthPrompt = 'Portfolio:\n'+ctx+'\n\nTotal: $'+tv.toFixed(0)+'\nSectors: '+sectorStr+'\n\nHealth score out of 100, then bullet-point: diversification, concentration risks, weak factor scores across positions, biggest red flag, one actionable step. Start with "SCORE: XX".';
+    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:800,system:ADVISOR_SYSTEM,messages:[{role:'user',content:healthPrompt}]});
     const text=data.content?.[0]?.text||'';
     const scoreMatch=text.match(/SCORE:\s*(\d+)/i);const score=scoreMatch?parseInt(scoreMatch[1]):65;
     const scoreColor=score>=80?'var(--green)':score>=60?'var(--yellow)':'var(--red)';
@@ -983,7 +989,8 @@ async function runBestWorst(){
   if(!portfolio.length){posDiv.innerHTML='<div style="font-size:13px;color:var(--text3)">Add positions first.</div>';return;}
   const ctx=buildPortfolioContext(stocks);
   try{
-    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:800,system:ADVISOR_SYSTEM,messages:[{role:'user',content:'Portfolio:\n'+ctx+'\n\nIdentify: (1) best position to hold/add to now — considering composite score, factor breakdown, P&L. (2) most concerning position. Be specific about factor scores. 3-4 sentences each.'}]);
+    const bwPrompt = 'Portfolio:\n'+ctx+'\n\nIdentify: (1) best position to hold or add to now, considering composite score, factor breakdown, and P&L. (2) most concerning position. Be specific about factor scores. 3-4 sentences each.';
+    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:800,system:ADVISOR_SYSTEM,messages:[{role:'user',content:bwPrompt}]});
     
     posDiv.innerHTML=`<div class="health-card"><div style="font-size:13px;font-weight:600;margin-bottom:0.75rem">🎯 Best &amp; Worst Positions</div><div class="ai-text">${data.content?.[0]?.text||''}</div></div>`;
   }catch(e){posDiv.innerHTML='<div style="font-size:13px;color:var(--red)">Analysis failed.</div>';}
