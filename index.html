@@ -466,8 +466,25 @@ async function doLogin() {
   const password = document.getElementById('login-password').value;
   document.getElementById('auth-error').textContent = '';
   if (!email || !password) { document.getElementById('auth-error').textContent = 'Please enter email and password.'; return; }
-  const { error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) document.getElementById('auth-error').textContent = error.message;
+  const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await r.json();
+  if (data.error || data.error_description) {
+    document.getElementById('auth-error').textContent = data.error_description || data.error;
+  } else {
+    currentUser = data.user;
+    currentUser._accessToken = data.access_token;
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app-shell').style.display = 'block';
+    document.getElementById('user-email-display').textContent = currentUser.email;
+    document.getElementById('live-dot').style.display = 'inline-block';
+    await loadUserData();
+    loadCachedScan();
+    renderTrends('all');
+  }
 }
 
 async function doSignup() {
@@ -476,20 +493,17 @@ async function doSignup() {
   document.getElementById('auth-error').textContent = '';
   if (!email || !password) { document.getElementById('auth-error').textContent = 'Please enter email and password.'; return; }
   if (password.length < 6) { document.getElementById('auth-error').textContent = 'Password must be at least 6 characters.'; return; }
-  const { error } = await sb.auth.signUp({ email, password });
-  if (error) document.getElementById('auth-error').textContent = error.message;
-  else document.getElementById('auth-msg').textContent = '✓ Account created — signing you in...';
-}
-
-async function doLogout() {
-  await sb.auth.signOut();
-}
-
-// Listen for auth state changes
-sb.auth.onAuthStateChange(async (event, session) => {
-  if (session?.user) {
-    currentUser = session.user;
-    currentUser._accessToken = session.access_token;
+  const r = await fetch(SUPABASE_URL + '/auth/v1/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await r.json();
+  if (data.error || data.error_description) {
+    document.getElementById('auth-error').textContent = data.error_description || data.error;
+  } else if (data.user) {
+    currentUser = data.user;
+    currentUser._accessToken = data.access_token;
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-shell').style.display = 'block';
     document.getElementById('user-email-display').textContent = currentUser.email;
@@ -497,14 +511,24 @@ sb.auth.onAuthStateChange(async (event, session) => {
     await loadUserData();
     loadCachedScan();
     renderTrends('all');
-    if (document.getElementById('tab-news').classList.contains('active')) loadNews();
   } else {
-    currentUser = null;
-    portfolio = []; watching = [];
-    document.getElementById('auth-screen').style.display = 'flex';
-    document.getElementById('app-shell').style.display = 'none';
+    document.getElementById('auth-msg').textContent = 'Check your email to confirm your account.';
   }
-});
+}
+
+async function doLogout() {
+  const token = currentUser?._accessToken || SUPABASE_ANON;
+  await fetch(SUPABASE_URL + '/auth/v1/logout', {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
+  });
+  currentUser = null;
+  portfolio = []; watching = [];
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app-shell').style.display = 'none';
+}
+
+// Auth state handled directly via doLogin/doSignup/doLogout
 
 // ── SUPABASE DATA — direct REST API (bypasses JS client which has fetch issues) ──
 const SB_HEADERS = () => ({
@@ -516,8 +540,7 @@ const SB_HEADERS = () => ({
 const SB_REST = SUPABASE_URL + '/rest/v1';
 
 async function getAccessToken() {
-  const { data } = await sb.auth.getSession();
-  return data?.session?.access_token || SUPABASE_ANON;
+  return currentUser?._accessToken || SUPABASE_ANON;
 }
 
 async function sbFetch(method, table, body, query) {
