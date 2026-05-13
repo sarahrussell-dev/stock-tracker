@@ -32,8 +32,8 @@ html.light{
   --yellow:#d97706;--yellow-bg:rgba(217,119,6,0.08);
   --sb:#059669;--b:#2563eb;--h:#d97706;--s:#ea580c;--ss:#dc2626;
 }
-.theme-toggle{background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 10px;font-size:11px;font-family:var(--mono);color:var(--text2);cursor:pointer;white-space:nowrap;}
-.theme-toggle:hover{color:var(--text);border-color:var(--text3);}
+.theme-toggle{font-size:11px;padding:3px 8px;background:none;border:1px solid var(--border2);color:var(--text3);border-radius:4px;cursor:pointer;font-family:var(--font);white-space:nowrap;}
+.theme-toggle:hover{color:var(--text);}
 *{box-sizing:border-box;margin:0;padding:0;}
 html{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;}
 body{min-height:100vh;}
@@ -67,8 +67,9 @@ body{min-height:100vh;}
 .nav-item:hover{color:var(--text);background:var(--bg3);}
 .nav-item.active{color:var(--accent);border-left-color:var(--accent);background:var(--accent-dim);}
 .nav-section{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;padding:1rem 1.25rem 0.4rem;}
-.user-box{margin:auto 1rem 0;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:0.65rem 0.85rem;display:flex;align-items:center;gap:8px;}
-.user-email{font-size:11px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.user-box{margin:auto 1rem 0;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:0.65rem 0.85rem;display:flex;flex-direction:column;gap:6px;}
+.user-email{font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.user-box-btns{display:flex;gap:6px;}
 .logout-btn{font-size:11px;padding:3px 8px;background:none;border:1px solid var(--border2);color:var(--text3);border-radius:4px;cursor:pointer;font-family:var(--font);white-space:nowrap;}
 .logout-btn:hover{color:var(--red);border-color:var(--red);}
 
@@ -395,8 +396,10 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
     <div class="nav-item" onclick="switchTab('news',this)"><span>📰</span> News</div>
     <div class="user-box">
       <span class="user-email" id="user-email-display"></span>
-      <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
-      <button class="logout-btn" onclick="doLogout()">Sign out</button>
+      <div class="user-box-btns">
+        <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
+        <button class="logout-btn" onclick="doLogout()">Sign out</button>
+      </div>
     </div>
   </aside>
 
@@ -462,7 +465,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem">
         <div><div class="page-title">Portfolio & Watching</div>
         <div class="page-sub">Your positions and watchlist — saved to your account</div></div>
-        <button class="refresh-btn" onclick="renderPortfolioTab()" title="Refresh live prices">↻ Refresh</button>
+        <button class="refresh-btn" onclick="renderPortfolioTab()">↻ Refresh</button>
       </div>
       <div class="section-divider">💼 My Portfolio</div>
       <div class="summary-row" id="portfolio-summary"></div>
@@ -492,7 +495,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0">
         <div><div class="page-title">AI Advisor</div>
         <div class="page-sub">Personalized analysis based on your exact positions and live signals</div></div>
-        <button class="refresh-btn" onclick="resetAdvisor()" title="Clear and start fresh">↻ Reset</button>
+        <button class="refresh-btn" onclick="resetAdvisor()">↻ Reset</button>
       </div>
       <div class="advisor-hero">
         <div class="advisor-hero-title">🤖 Your personal stock analyst</div>
@@ -616,8 +619,6 @@ async function doLogin() {
     await loadUserData();
     loadCachedScan();
     renderTrends('all');
-    renderPortfolioTab();
-    loadNews();
   }
 }
 
@@ -645,8 +646,6 @@ async function doSignup() {
     await loadUserData();
     loadCachedScan();
     renderTrends('all');
-    renderPortfolioTab();
-    loadNews();
   } else {
     document.getElementById('auth-msg').textContent = 'Check your email to confirm your account.';
   }
@@ -1292,7 +1291,14 @@ async function askChat(preset){
 }
 
 // ── PORTFOLIO TAB ─────────────────────────────────────────────────────
-async function renderPortfolioTab(){await renderPortfolio();await renderWatching();}
+async function renderPortfolioTab(){
+  // Clear cached data for all portfolio + watchlist symbols so refresh fetches live prices
+  [...portfolio.map(p=>p.sym),...watching.map(w=>w.sym)].forEach(sym=>{
+    delete memCache[sym];
+    try{localStorage.removeItem('sc_'+sym);}catch{}
+  });
+  await renderPortfolio();await renderWatching();
+}
 async function renderPortfolio(){
   const summary=document.getElementById('portfolio-summary'),list=document.getElementById('portfolio-list');
   if(!portfolio.length){summary.innerHTML='';list.innerHTML='<div style="font-size:13px;color:var(--text3);padding:0.75rem 0">No positions yet — add one below.</div>';return;}
@@ -1431,24 +1437,28 @@ function switchTab(t,el){
   if(t==='news')loadNews();
 }
 
-// ── ADVISOR RESET ─────────────────────────────────────────────────────
+function toggleTheme(){
+  const light=document.documentElement.classList.toggle('light');
+  document.getElementById('theme-btn').textContent=light?'🌙 Dark':'☀ Light';
+  try{localStorage.setItem('theme',light?'light':'dark');}catch{}
+}
+(function(){
+  try{
+    if(localStorage.getItem('theme')==='light'){
+      document.documentElement.classList.add('light');
+      const b=document.getElementById('theme-btn');
+      if(b)b.textContent='🌙 Dark';
+    }
+  }catch{}
+})();
+
 function resetAdvisor(){
   chatHistory=[];
   document.getElementById('advisor-health').innerHTML='';
   document.getElementById('advisor-positions').innerHTML='';
   const msgs=document.getElementById('chat-messages');
-  if(msgs) msgs.innerHTML='<div class="chat-msg ai">Hey! I know your portfolio and current market signals. Ask me anything — "should I sell TSLA?", "what\'s my biggest risk?", "should I take profits on NVDA?" — whatever\'s on your mind.</div>';
+  if(msgs)msgs.innerHTML='<div class="chat-msg ai">Hey! I know your portfolio and current market signals. Ask me anything — "should I sell TSLA?", "what\'s my biggest risk?", "should I take profits on NVDA?" — whatever\'s on your mind.</div>';
 }
-
-// ── THEME TOGGLE ──────────────────────────────────────────────────────
-function toggleTheme(){
-  const isLight=document.documentElement.classList.toggle('light');
-  document.getElementById('theme-btn').textContent=isLight?'🌙 Dark':'☀ Light';
-  try{localStorage.setItem('theme',isLight?'light':'dark');}catch{}
-}
-(function(){
-  try{if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light');const b=document.getElementById('theme-btn');if(b)b.textContent='🌙 Dark';}}catch{}
-})();
 </script>
 </body>
 </html>
