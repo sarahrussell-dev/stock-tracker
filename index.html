@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <title>Stock Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
@@ -214,7 +217,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 .pos-owned-note{font-size:11px;background:var(--green-bg);color:var(--green);padding:5px 10px;border-radius:6px;margin-bottom:0.9rem;}
 
 /* ── TABLET (iPad) ── */
-@media(max-width:1024px){
+@media(max-width:1024px) and (min-width:701px){
   .shell{grid-template-columns:180px 1fr;}
   .main{padding:1.5rem;}
   .metric-grid{grid-template-columns:repeat(2,1fr);}
@@ -223,92 +226,119 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
   .add-grid>div:last-child{grid-column:1/-1;}
 }
 
-/* ── MOBILE ── */
+/* ── MOBILE (iPhone + small Android) ── */
 @media(max-width:700px){
-  .shell{display:flex;flex-direction:column;}
+  html, body { height: 100%; overflow-x: hidden; }
+  .shell{ display: flex; flex-direction: column; min-height: 100vh; min-height: -webkit-fill-available; }
 
-  /* Bottom nav bar on mobile */
+  /* Fixed bottom nav */
   .sidebar{
-    order:2;
-    flex-direction:row;
-    padding:0;
-    height:auto;
-    position:fixed;
-    bottom:0;left:0;right:0;
-    border-right:none;
-    border-top:1px solid var(--border);
-    z-index:100;
-    background:var(--bg2);
+    order: 2;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: auto;
+    flex-direction: row;
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-right: none;
+    border-top: 1px solid var(--border);
+    z-index: 1000;
+    background: var(--bg2);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
-  .logo{display:none;}
-  .nav-section{display:none;}
+  .logo{ display: none; }
+  .nav-section{ display: none; }
   .nav-item{
-    flex:1;flex-direction:column;gap:2px;
-    padding:8px 4px;font-size:9px;
-    border-left:none;border-top:2px solid transparent;
-    border-bottom:none;justify-content:center;
-    text-align:center;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 4px 6px;
+    font-size: 9px;
+    border-left: none;
+    border-top: 2px solid transparent;
+    border-bottom: none;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    min-width: 60px;
+    -webkit-tap-highlight-color: transparent;
   }
-  .nav-item span{font-size:18px;}
-  .nav-item.active{border-top-color:var(--accent);border-left:none;background:var(--accent-dim);}
-  .user-box{display:none;}
+  .nav-item span{ font-size: 20px; line-height: 1; }
+  .nav-item.active{ border-top-color: var(--accent); border-left: none; background: var(--accent-dim); }
+  .user-box{ display: none; }
 
-  /* Main content above nav bar */
+  /* Main scrollable area above nav */
   .main{
-    order:1;
-    padding:1rem 0.75rem;
-    padding-bottom:80px; /* room for bottom nav */
-    max-width:100%;
-    overflow-x:hidden;
+    order: 1;
+    padding: 1rem 0.85rem;
+    padding-bottom: calc(70px + env(safe-area-inset-bottom));
+    max-width: 100%;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 
-  .page-title{font-size:18px;}
-  .page-sub{font-size:12px;margin-bottom:1.25rem;}
+  .page-title{ font-size: 18px; }
+  .page-sub{ font-size: 12px; margin-bottom: 1.25rem; }
 
-  /* Auth screen */
-  .auth-card{padding:1.5rem;margin:0.5rem;}
+  /* Auth */
+  .auth-card{ padding: 1.5rem 1.25rem; margin: 0.5rem; }
 
   /* Grids */
-  .metric-grid{grid-template-columns:repeat(2,1fr);gap:6px;}
-  .pos-stats{grid-template-columns:repeat(2,1fr);gap:5px;}
-  .pac-stats{grid-template-columns:repeat(2,1fr);}
-  .signal-breakdown{grid-template-columns:repeat(3,1fr);gap:4px;}
-  .summary-row{grid-template-columns:repeat(3,1fr);gap:6px;}
-  .add-grid{grid-template-columns:1fr 1fr;gap:6px;}
-  .add-grid>div:last-child{grid-column:1/-1;}
+  .metric-grid{ grid-template-columns: repeat(2,1fr); gap: 6px; }
+  .pos-stats{ grid-template-columns: repeat(2,1fr); gap: 5px; }
+  .pac-stats{ grid-template-columns: repeat(2,1fr); }
+  .signal-breakdown{ grid-template-columns: repeat(3,1fr); gap: 4px; }
+  .summary-row{ grid-template-columns: repeat(3,1fr); gap: 6px; }
+  .add-grid{ grid-template-columns: 1fr 1fr; gap: 6px; }
+  .add-grid>div:last-child{ grid-column: 1/-1; }
 
   /* Stock cards */
-  .stock-card{padding:0.65rem 0.75rem;}
-  .sc-sym{font-size:13px;}
-  .sc-price{font-size:13px;}
+  .stock-card{ padding: 0.65rem 0.75rem; }
+  .sc-sym{ font-size: 13px; }
+  .sc-price{ font-size: 13px; }
+  .sc-name{ max-width: 200px; }
 
   /* Watch cards */
-  .watch-card{grid-template-columns:55px 1fr auto auto;gap:8px;}
+  .watch-card{ grid-template-columns: 55px 1fr auto auto; gap: 8px; }
 
-  /* Scan bar */
-  #progress-label{font-size:10px;}
-
-  /* Filters wrap nicely */
-  .filters{gap:4px;}
-  .pill{padding:3px 8px;font-size:10px;}
-  .sort-row{gap:4px;}
-  .sort-btn{padding:2px 7px;font-size:10px;}
+  /* Filters */
+  .filters{ gap: 4px; }
+  .pill{ padding: 3px 8px; font-size: 10px; }
+  .sort-row{ gap: 4px; }
+  .sort-btn{ padding: 2px 7px; font-size: 10px; }
 
   /* Chat */
-  .chat-messages{max-height:280px;}
-  .chat-msg{max-width:95%;}
-  .quick-questions{gap:4px;}
-  .qq-btn{font-size:10px;padding:3px 8px;}
+  .chat-messages{ max-height: 260px; }
+  .chat-msg{ max-width: 95%; font-size: 12px; }
+  .quick-questions{ gap: 4px; padding: 0.5rem; }
+  .qq-btn{ font-size: 10px; padding: 3px 8px; }
+  .chat-input-row input{ font-size: 16px; } /* prevents iOS zoom on focus */
 
-  /* Advisor cards */
-  .position-advice-card{padding:0.9rem 0.75rem;}
+  /* Prevent iOS input zoom on all inputs */
+  input[type=text],input[type=number],input[type=password],input[type=email]{
+    font-size: 16px;
+  }
 
-  /* Summary values smaller */
-  .sum-val{font-size:16px;}
+  /* Advisor */
+  .position-advice-card{ padding: 0.9rem 0.75rem; }
+  .advisor-actions{ flex-direction: column; }
+  .advisor-actions button{ width: 100%; }
+
+  /* Summary */
+  .sum-val{ font-size: 15px; }
+  .sum-label{ font-size: 9px; }
 
   /* Tier legend */
-  .tier-legend{gap:4px;}
-  .tier-chip{font-size:10px;padding:2px 7px;}
+  .tier-legend{ gap: 4px; }
+  .tier-chip{ font-size: 10px; padding: 2px 7px; }
+
+  /* Progress bar label */
+  #progress-label{ font-size: 10px; }
+
+  /* Pos actions wrap */
+  .pos-actions{ flex-wrap: wrap; gap: 4px; }
+  .pos-actions button{ font-size: 10px; padding: 3px 8px; }
 }
 </style>
 </head>
