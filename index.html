@@ -392,11 +392,8 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 
     <!-- TRENDS -->
     <div id="tab-trends" class="panel active">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0">
-        <div><div class="page-title">Market Trends</div>
-        <div class="page-sub" style="margin-bottom:0">5-factor composite signal: analyst consensus · fundamentals · earnings · insider activity · price position</div></div>
-        <button class="refresh-btn" style="margin-top:4px;flex-shrink:0" onclick="loadScanFromDB()">↻ Refresh</button>
-      </div>
+      <div class="page-title">Market Trends</div>
+      <div class="page-sub">5-factor composite signal: analyst consensus · fundamentals · earnings · insider activity · price position</div>
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:0.65rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
           <div class="progress-wrap" id="progress-wrap" style="margin-bottom:4px;display:none"><div class="progress-bar" id="progress-bar"></div></div>
@@ -439,11 +436,8 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 
     <!-- RESEARCH -->
     <div id="tab-research" class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem">
-        <div><div class="page-title">Research</div>
-        <div class="page-sub" style="margin-bottom:0">Full 5-factor breakdown + AI analysis for any stock</div></div>
-        <button class="refresh-btn" style="margin-top:4px;flex-shrink:0" onclick="if(document.getElementById('research-input').value)analyzeStock()">↻ Refresh</button>
-      </div>
+      <div class="page-title">Research</div>
+      <div class="page-sub">Full 5-factor breakdown + AI analysis for any stock</div>
       <div class="row">
         <input type="text" id="research-input" placeholder="Enter ticker (e.g. AAPL, NVDA...)" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')analyzeStock()"/>
         <button class="primary" onclick="analyzeStock()">Analyze ↗</button>
@@ -453,11 +447,8 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 
     <!-- PORTFOLIO -->
     <div id="tab-portfolio" class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0">
-        <div><div class="page-title">Portfolio & Watching</div>
-        <div class="page-sub" style="margin-bottom:0">Your positions and watchlist — saved to your account</div></div>
-        <button class="refresh-btn" style="margin-top:4px;flex-shrink:0" onclick="renderPortfolioTab()">↻ Refresh</button>
-      </div>
+      <div class="page-title">Portfolio & Watching</div>
+      <div class="page-sub">Your positions and watchlist — saved to your account</div>
       <div class="section-divider">💼 My Portfolio</div>
       <div class="summary-row" id="portfolio-summary"></div>
       <div id="portfolio-list"></div>
@@ -483,11 +474,8 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 
     <!-- AI ADVISOR -->
     <div id="tab-advisor" class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0">
-        <div><div class="page-title">AI Advisor</div>
-        <div class="page-sub" style="margin-bottom:0">Personalized analysis based on your exact positions and live signals</div></div>
-        <button class="refresh-btn" style="margin-top:4px;flex-shrink:0" onclick="resetAdvisor()">↻ Refresh</button>
-      </div>
+      <div class="page-title">AI Advisor</div>
+      <div class="page-sub">Personalized analysis based on your exact positions and live signals</div>
       <div class="advisor-hero">
         <div class="advisor-hero-title">🤖 Your personal stock analyst</div>
         <div class="advisor-hero-sub">Knows your positions, cost basis, and 5-factor signal scores. Ask anything about your portfolio.</div>
@@ -523,7 +511,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
     <div id="tab-news" class="panel">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.75rem">
         <div><div class="page-title">Market News</div><div class="page-sub">Live headlines — 📌 means you own or watch that stock</div></div>
-        <button class="refresh-btn" style="margin-top:6px" onclick="loadNews(true)">↻ Refresh</button>
+        <button class="refresh-btn" style="margin-top:6px" onclick="loadNews()">↻ Refresh</button>
       </div>
       <div id="news-list"><div class="loading"><span class="spinner"></span>Loading news...</div></div>
     </div>
@@ -996,7 +984,7 @@ async function loadScanFromDB() {
   setProgressLabel('Loading market signals...');
   try {
     const token = getAccessToken();
-    const r = await fetch(SUPABASE_URL + '/rest/v1/scan_results?select=sym,data,updated_at&order=updated_at.desc&limit=2000', {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/scan_results?select=sym,data,updated_at&order=updated_at.desc&limit=500', {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
     });
     if (!r.ok) throw new Error(r.status);
@@ -1385,11 +1373,7 @@ async function addWatchingDirect(sym){
 async function removeWatching(sym){await deleteWatchItem(sym);await renderWatching();}
 
 // ── NEWS ──────────────────────────────────────────────────────────────
-async function loadNews(forceRefresh){
-  if(forceRefresh){
-    // Clear news from memCache so we get fresh data
-    Object.keys(memCache).forEach(k=>{if(k.includes('/news'))delete memCache[k];});
-  }
+async function loadNews(){
   document.getElementById('news-list').innerHTML=`<div class="loading"><span class="spinner"></span>Loading...</div>`;
   try{
     const news=await fhGet('/news?category=general');
@@ -1422,13 +1406,6 @@ function switchTab(t,el){
   switchTabDirect(t);document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));el.classList.add('active');
   if(t==='portfolio')renderPortfolioTab();
   if(t==='news')loadNews();
-}
-
-function resetAdvisor(){
-  chatHistory=[];
-  document.getElementById('chat-messages').innerHTML='<div class="chat-msg ai">Hey! I know your portfolio and current market signals. Ask me anything — "should I sell TSLA?", "what\'s my biggest risk?", "should I take profits on NVDA?" — whatever\'s on your mind.</div>';
-  document.getElementById('advisor-health').innerHTML='';
-  document.getElementById('advisor-positions').innerHTML='';
 }
 </script>
 </body>
