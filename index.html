@@ -15,14 +15,25 @@
 :root{
   --bg:#0e0f11;--bg2:#16181c;--bg3:#1e2026;--border:#2a2d35;--border2:#353840;
   --text:#e8eaf0;--text2:#8b909e;--text3:#555b6b;
-  --accent:#d4ff5c;--accent-dim:rgba(212,255,92,0.1);
-  --green:#4ade80;--green-bg:rgba(74,222,128,0.1);
+  --accent:#60a5fa;--accent-dim:rgba(96,165,250,0.12);
+  --green:#34d399;--green-bg:rgba(52,211,153,0.1);
   --red:#f87171;--red-bg:rgba(248,113,113,0.1);
   --yellow:#fbbf24;--yellow-bg:rgba(251,191,36,0.1);
-  --sb:#4ade80;--b:#86efac;--h:#fbbf24;--s:#fb923c;--ss:#f87171;
+  --sb:#34d399;--b:#60a5fa;--h:#fbbf24;--s:#fb923c;--ss:#f87171;
   --radius:8px;--radius-lg:12px;
   --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
 }
+html.light{
+  --bg:#f4f5f7;--bg2:#ffffff;--bg3:#eef0f4;--border:#dde0e8;--border2:#c8ccd6;
+  --text:#111318;--text2:#4b5263;--text3:#8b909e;
+  --accent:#2563eb;--accent-dim:rgba(37,99,235,0.1);
+  --green:#059669;--green-bg:rgba(5,150,105,0.08);
+  --red:#dc2626;--red-bg:rgba(220,38,38,0.08);
+  --yellow:#d97706;--yellow-bg:rgba(217,119,6,0.08);
+  --sb:#059669;--b:#2563eb;--h:#d97706;--s:#ea580c;--ss:#dc2626;
+}
+.theme-toggle{background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 10px;font-size:11px;font-family:var(--mono);color:var(--text2);cursor:pointer;white-space:nowrap;}
+.theme-toggle:hover{color:var(--text);border-color:var(--text3);}
 *{box-sizing:border-box;margin:0;padding:0;}
 html{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;}
 body{min-height:100vh;}
@@ -384,6 +395,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
     <div class="nav-item" onclick="switchTab('news',this)"><span>📰</span> News</div>
     <div class="user-box">
       <span class="user-email" id="user-email-display"></span>
+      <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
       <button class="logout-btn" onclick="doLogout()">Sign out</button>
     </div>
   </aside>
@@ -447,8 +459,11 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 
     <!-- PORTFOLIO -->
     <div id="tab-portfolio" class="panel">
-      <div class="page-title">Portfolio & Watching</div>
-      <div class="page-sub">Your positions and watchlist — saved to your account</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem">
+        <div><div class="page-title">Portfolio & Watching</div>
+        <div class="page-sub">Your positions and watchlist — saved to your account</div></div>
+        <button class="refresh-btn" onclick="renderPortfolioTab()" title="Refresh live prices">↻ Refresh</button>
+      </div>
       <div class="section-divider">💼 My Portfolio</div>
       <div class="summary-row" id="portfolio-summary"></div>
       <div id="portfolio-list"></div>
@@ -474,8 +489,11 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 
     <!-- AI ADVISOR -->
     <div id="tab-advisor" class="panel">
-      <div class="page-title">AI Advisor</div>
-      <div class="page-sub">Personalized analysis based on your exact positions and live signals</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0">
+        <div><div class="page-title">AI Advisor</div>
+        <div class="page-sub">Personalized analysis based on your exact positions and live signals</div></div>
+        <button class="refresh-btn" onclick="resetAdvisor()" title="Clear and start fresh">↻ Reset</button>
+      </div>
       <div class="advisor-hero">
         <div class="advisor-hero-title">🤖 Your personal stock analyst</div>
         <div class="advisor-hero-sub">Knows your positions, cost basis, and 5-factor signal scores. Ask anything about your portfolio.</div>
@@ -511,7 +529,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
     <div id="tab-news" class="panel">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.75rem">
         <div><div class="page-title">Market News</div><div class="page-sub">Live headlines — 📌 means you own or watch that stock</div></div>
-        <button class="refresh-btn" style="margin-top:6px" onclick="loadNews()">↻ Refresh</button>
+        <button class="refresh-btn" style="margin-top:6px" onclick="loadNews(true)">↻ Refresh</button>
       </div>
       <div id="news-list"><div class="loading"><span class="spinner"></span>Loading news...</div></div>
     </div>
@@ -598,6 +616,8 @@ async function doLogin() {
     await loadUserData();
     loadCachedScan();
     renderTrends('all');
+    renderPortfolioTab();
+    loadNews();
   }
 }
 
@@ -625,6 +645,8 @@ async function doSignup() {
     await loadUserData();
     loadCachedScan();
     renderTrends('all');
+    renderPortfolioTab();
+    loadNews();
   } else {
     document.getElementById('auth-msg').textContent = 'Check your email to confirm your account.';
   }
@@ -984,7 +1006,7 @@ async function loadScanFromDB() {
   setProgressLabel('Loading market signals...');
   try {
     const token = getAccessToken();
-    const r = await fetch(SUPABASE_URL + '/rest/v1/scan_results?select=sym,data,updated_at&order=updated_at.desc&limit=500', {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/scan_results?select=sym,data,updated_at&order=sym.asc&limit=2000', {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
     });
     if (!r.ok) throw new Error(r.status);
@@ -1373,7 +1395,8 @@ async function addWatchingDirect(sym){
 async function removeWatching(sym){await deleteWatchItem(sym);await renderWatching();}
 
 // ── NEWS ──────────────────────────────────────────────────────────────
-async function loadNews(){
+async function loadNews(forceRefresh){
+  if(forceRefresh){Object.keys(memCache).forEach(k=>{if(k.includes('/news'))delete memCache[k];});}
   document.getElementById('news-list').innerHTML=`<div class="loading"><span class="spinner"></span>Loading...</div>`;
   try{
     const news=await fhGet('/news?category=general');
@@ -1407,6 +1430,25 @@ function switchTab(t,el){
   if(t==='portfolio')renderPortfolioTab();
   if(t==='news')loadNews();
 }
+
+// ── ADVISOR RESET ─────────────────────────────────────────────────────
+function resetAdvisor(){
+  chatHistory=[];
+  document.getElementById('advisor-health').innerHTML='';
+  document.getElementById('advisor-positions').innerHTML='';
+  const msgs=document.getElementById('chat-messages');
+  if(msgs) msgs.innerHTML='<div class="chat-msg ai">Hey! I know your portfolio and current market signals. Ask me anything — "should I sell TSLA?", "what\'s my biggest risk?", "should I take profits on NVDA?" — whatever\'s on your mind.</div>';
+}
+
+// ── THEME TOGGLE ──────────────────────────────────────────────────────
+function toggleTheme(){
+  const isLight=document.documentElement.classList.toggle('light');
+  document.getElementById('theme-btn').textContent=isLight?'🌙 Dark':'☀ Light';
+  try{localStorage.setItem('theme',isLight?'light':'dark');}catch{}
+}
+(function(){
+  try{if(localStorage.getItem('theme')==='light'){document.documentElement.classList.add('light');const b=document.getElementById('theme-btn');if(b)b.textContent='🌙 Dark';}}catch{}
+})();
 </script>
 </body>
 </html>
