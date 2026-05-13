@@ -367,14 +367,13 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:0.65rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
           <div class="progress-wrap" id="progress-wrap" style="margin-bottom:4px;display:none"><div class="progress-bar" id="progress-bar"></div></div>
-          <div style="font-size:11px;color:var(--text3);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="progress-label">Ready — click Scan to load live signals</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="progress-label">Loading market signals...</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
           <span id="result-count" style="font-size:11px;color:var(--text3);font-family:var(--mono)"></span>
           <span class="live-dot" id="live-dot" style="display:none"></span>
-          <button class="primary" id="scan-btn" onclick="startScan()" style="font-size:12px;padding:5px 12px">▶ Scan</button>
-          <button class="ghost" id="stop-btn" onclick="stopScan()" style="display:none;font-size:12px;padding:5px 12px">⏹ Stop</button>
-          <button class="ghost" onclick="clearScanCache()" style="font-size:12px;padding:5px 12px" title="Clear cache and rescan">↺</button>
+          <button class="ghost" id="scan-btn" onclick="triggerScan()" style="font-size:12px;padding:5px 12px">↺ Refresh</button>
+          <button class="ghost" id="stop-btn" style="display:none;font-size:12px;padding:5px 12px">⏳ Running...</button>
         </div>
       </div>
       <div class="tier-legend">
@@ -950,78 +949,66 @@ async function fetchSymbolUniverse() {
   }
 }
 
-// ── SCAN ──────────────────────────────────────────────────────────────
-function loadCachedScan() {
+// ── SCAN — loads from database, triggers Edge Function on demand ───────
+async function loadScanFromDB() {
+  setProgressLabel('Loading market signals...');
   try {
-    const cached=JSON.parse(localStorage.getItem('scan_results')||'null');
-    const ts=parseInt(localStorage.getItem('scan_ts')||'0');
-    const universe=JSON.parse(localStorage.getItem('sym_universe')||'null');
-    const uTs=parseInt(localStorage.getItem('sym_universe_ts')||'0');
-    if(universe?.length&&(Date.now()-uTs)<UNIVERSE_TTL) scanUniverse=universe;
-    if(cached?.length&&(Date.now()-ts)<CACHE_TTL){
-      scanResults=cached;cached.forEach(s=>{memCache[s.sym]=s;});
-      const ageMin=Math.round((Date.now()-ts)/60000);
-      const ageStr=ageMin<60?ageMin+'min ago':Math.round(ageMin/60)+'h ago';
-      document.getElementById('progress-wrap').style.display='block';
-      document.getElementById('progress-bar').style.width='100%';
-      setProgressLabel(`✓ ${cached.length} stocks scored · from cache ${ageStr}`);
-    } else {
-      setProgressLabel('Ready — click Scan to load live signals');
+    const token = getAccessToken();
+    const r = await fetch(SUPABASE_URL + '/rest/v1/scan_results?select=sym,data,updated_at&order=updated_at.desc&limit=500', {
+      headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
+    });
+    if (!r.ok) throw new Error(r.status);
+    const rows = await r.json();
+    if (!rows || !rows.length) {
+      setProgressLabel('No scan data yet — click ↺ Refresh to run first scan');
+      return;
     }
-  } catch {}
+    scanResults = rows.map(r => r.data).filter(Boolean).sort(sortFn());
+    scanResults.forEach(s => { memCache[s.sym] = s; });
+    const updatedAt = new Date(rows[0].updated_at);
+    const ageMin = Math.round((Date.now() - updatedAt.getTime()) / 60000);
+    const ageStr = ageMin < 60 ? ageMin + 'min ago' : Math.round(ageMin / 60) + 'h ago';
+    document.getElementById('progress-wrap').style.display = 'block';
+    document.getElementById('progress-bar').style.width = '100%';
+    setProgressLabel('✓ ' + scanResults.length + ' stocks scored · updated ' + ageStr + ' · auto-refreshes daily at 7am');
+    renderTrends(currentFilter);
+  } catch(e) {
+    setProgressLabel('Could not load scan data — click ↺ Refresh to try again');
+  }
 }
 
-async function startScan() {
-  if(scanRunning) return;
-  if(!scanUniverse.length){
-    setProgressLabel('Building $1B+ universe...');
-    await fetchSymbolUniverse();
+async function triggerScan() {
+  const btn = document.getElementById('scan-btn');
+  const stop = document.getElementById('stop-btn');
+  btn.style.display = 'none';
+  stop.style.display = 'inline-block';
+  setProgressLabel('Triggering market scan — this runs server-side and takes ~8 min...');
+  document.getElementById('progress-wrap').style.display = 'block';
+  document.getElementById('progress-bar').style.width = '0%';
+  try {
+    const r = await fetch(PROXY.replace('finnhub-proxy', 'market-scan'), {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON, 'Content-Type': 'application/json' }
+    });
+    const data = await r.json();
+    setProgressLabel('✓ Scan complete — ' + (data.found || '?') + ' stocks scored · reloading...');
+    await loadScanFromDB();
+  } catch(e) {
+    setProgressLabel('Scan failed — check your connection and try again');
   }
-  scanRunning=true;scanAbort=false;
-  document.getElementById('scan-btn').style.display='none';
-  document.getElementById('stop-btn').style.display='inline-block';
-  document.getElementById('progress-wrap').style.display='block';
-  const syms=getActiveScanList(),total=syms.length;
-  let scanned=0,found=0,results=[];
-  setProgressLabel(`Scanning ${total} stocks...`);
-  const BATCH=10;
-  for(let i=0;i<total&&!scanAbort;i+=BATCH){
-    const batch=syms.slice(i,i+BATCH);
-    const t0=Date.now();
-    const hits=await Promise.all(batch.map(s=>fetchScanData(s)));
-    hits.forEach(d=>{if(d){results.push(d);found++;}});
-    scanned=Math.min(i+BATCH,total);
-    document.getElementById('progress-bar').style.width=Math.round(scanned/total*100)+'%';
-    const elapsed=Date.now()-t0;
-    const etaMin=Math.ceil((total-scanned)*(elapsed/BATCH)/60000);
-    setProgressLabel(`Scanning ${scanned}/${total} · ${found} scored · ~${etaMin<1?'<1':etaMin}m left`);
-    scanResults=[...results].sort(sortFn());
-    renderTrends(currentFilter);
-    const wait=Math.max(400,(BATCH*4/CALLS_PER_MIN)*60000-(Date.now()-t0));
-    if(!scanAbort&&i+BATCH<total) await sleep(wait);
-  }
-  scanRunning=false;
-  document.getElementById('scan-btn').style.display='inline-block';
-  document.getElementById('stop-btn').style.display='none';
-  if(!scanAbort){
-    document.getElementById('progress-bar').style.width='100%';
-    const ts=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    setProgressLabel(`✓ ${found} stocks scored · last scan ${ts} · cached 24h`);
-    try{localStorage.setItem('scan_results',JSON.stringify(scanResults));localStorage.setItem('scan_ts',Date.now());}catch{}
-  }
-  renderTrends(currentFilter);
+  btn.style.display = 'inline-block';
+  stop.style.display = 'none';
 }
-function stopScan(){scanAbort=true;scanRunning=false;document.getElementById('scan-btn').style.display='inline-block';document.getElementById('stop-btn').style.display='none';setProgressLabel('Stopped · showing results so far');}
-function clearScanCache(){
-  getActiveScanList().forEach(s=>{try{localStorage.removeItem('sc_'+s);}catch{}});
-  FALLBACK_SYMS.forEach(s=>{try{localStorage.removeItem('sc_'+s);}catch{}});
-  try{localStorage.removeItem('scan_results');localStorage.removeItem('scan_ts');}catch{}
-  memCache={};scanResults=[];
-  document.getElementById('progress-bar').style.width='0%';
-  document.getElementById('progress-wrap').style.display='none';
-  setProgressLabel('Cache cleared — ready to scan');
-  renderTrends(currentFilter);
+
+function loadCachedScan() {
+  // Load from DB on startup
+  loadScanFromDB();
 }
+
+// Keep these as stubs so nothing breaks
+function startScan() { triggerScan(); }
+function stopScan() {}
+function clearScanCache() { loadScanFromDB(); }
 
 // ── TRENDS ────────────────────────────────────────────────────────────
 const DEFAULT_STOCKS=[
