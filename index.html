@@ -56,7 +56,7 @@ body{min-height:100vh;}
 .auth-msg{font-size:12px;color:var(--green);margin-top:0.75rem;}
 
 /* ── APP SHELL ── */
-#app-shell{display:none;height:100%;}
+#app-shell{display:none;}
 .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh;}
 .sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:1.5rem 0;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;overflow-y:auto;}
 .main{padding:2rem 2.5rem;max-width:980px;}
@@ -241,7 +241,8 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 /* ── MOBILE (iPhone + small Android) ── */
 @media(max-width:700px){
   html, body { height: 100%; overflow-x: hidden; }
-  .shell{ display: flex; flex-direction: column; height: 100vh; height: -webkit-fill-available; }
+  #app-shell{ display: flex !important; flex-direction: column; height: 100%; height: -webkit-fill-available; }
+  .shell{ display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
   /* Fixed bottom nav */
   .sidebar{
