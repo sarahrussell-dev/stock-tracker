@@ -240,9 +240,10 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 
 /* ── MOBILE (iPhone + small Android) ── */
 @media(max-width:700px){
-  html, body { height: 100%; overflow-x: hidden; }
-  #app-shell{ flex-direction: column; height: 100%; height: -webkit-fill-available; }
-  .shell{ display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  html{ height: -webkit-fill-available; }
+  body{ height: -webkit-fill-available; overflow-x: hidden; }
+  #app-shell{ display: flex !important; flex-direction: column; height: -webkit-fill-available; overflow: hidden; }
+  .shell{ display: flex !important; flex-direction: column; flex: 1; overflow: hidden; }
 
   /* Fixed bottom nav */
   .sidebar{
