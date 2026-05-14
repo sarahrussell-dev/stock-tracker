@@ -1113,8 +1113,10 @@ function quickResearch(sym){switchTabDirect('research');document.querySelectorAl
 async function analyzeStock(){
   const sym=document.getElementById('research-input').value.trim().toUpperCase();if(!sym)return;
   document.getElementById('research-result').innerHTML=`<div class="loading"><span class="spinner"></span>Loading full data for ${sym}...</div>`;
+  const dbScore=memCache[sym]?.score??null;
   delete memCache[sym];try{localStorage.removeItem('sc_'+sym);}catch{}
   const s=await fetchStockData(sym);
+  if(s&&dbScore!==null) s.score=dbScore;
   if(!s){document.getElementById('research-result').innerHTML=`<div style="font-size:13px;color:var(--text3);padding:1rem 0">No data found for ${sym}.</div>`;return;}
   const pos=portfolio.find(p=>p.sym===sym);
   const insiderNote=s.insiderBuying>0||s.insiderSelling>0?`<span style="color:var(--green);font-size:10px;font-family:var(--mono)">▲ ${s.insiderBuying} buys</span> <span style="color:var(--red);font-size:10px;font-family:var(--mono)">▼ ${s.insiderSelling} sells</span> (6mo)`:'No recent insider activity';
