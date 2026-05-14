@@ -241,7 +241,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 /* ── MOBILE (iPhone + small Android) ── */
 @media(max-width:700px){
   html, body { height: 100%; overflow-x: hidden; }
-  #app-shell{ display: flex !important; flex-direction: column; height: 100%; height: -webkit-fill-available; }
+  #app-shell{ flex-direction: column; height: 100%; height: -webkit-fill-available; }
   .shell{ display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
   /* Fixed bottom nav */
@@ -620,7 +620,7 @@ async function doLogin() {
     currentUser = data.user;
     currentUser._accessToken = data.access_token;
     document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('app-shell').style.display = 'block';
+    document.getElementById('app-shell').style.display = window.innerWidth <= 700 ? 'flex' : 'block';
     document.getElementById('user-email-display').textContent = currentUser.email;
     document.getElementById('live-dot').style.display = 'inline-block';
     await loadUserData();
@@ -647,7 +647,7 @@ async function doSignup() {
     currentUser = data.user;
     currentUser._accessToken = data.access_token;
     document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('app-shell').style.display = 'block';
+    document.getElementById('app-shell').style.display = window.innerWidth <= 700 ? 'flex' : 'block';
     document.getElementById('user-email-display').textContent = currentUser.email;
     document.getElementById('live-dot').style.display = 'inline-block';
     await loadUserData();
@@ -693,7 +693,7 @@ async function doLogout() {
       currentUser = session.user;
       currentUser._accessToken = session.access_token;
       document.getElementById('auth-screen').style.display = 'none';
-      document.getElementById('app-shell').style.display = 'block';
+      document.getElementById('app-shell').style.display = window.innerWidth <= 700 ? 'flex' : 'block';
       document.getElementById('user-email-display').textContent = currentUser.email;
       document.getElementById('live-dot').style.display = 'inline-block';
       await loadUserData();
