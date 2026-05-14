@@ -56,7 +56,7 @@ body{min-height:100vh;}
 .auth-msg{font-size:12px;color:var(--green);margin-top:0.75rem;}
 
 /* ── APP SHELL ── */
-#app-shell{display:none;height:100%;}
+#app-shell{display:none;}
 .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh;}
 .sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:1.5rem 0;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;overflow-y:auto;}
 .main{padding:2rem 2.5rem;max-width:980px;}
@@ -241,7 +241,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
 /* ── MOBILE (iPhone + small Android) ── */
 @media(max-width:700px){
   html, body { height: 100%; overflow-x: hidden; }
-  .shell{ display: flex; flex-direction: column; height: 100vh; height: -webkit-fill-available; }
+  .shell{ display: flex; flex-direction: column; min-height: 100vh; min-height: -webkit-fill-available; }
 
   /* Fixed bottom nav */
   .sidebar{
@@ -283,13 +283,11 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
   /* Main scrollable area above nav */
   .main{
     order: 1;
-    flex: 1;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
     padding: 1rem 0.85rem;
     padding-bottom: calc(70px + env(safe-area-inset-bottom));
     max-width: 100%;
     overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 
   .page-title{ font-size: 18px; }
@@ -501,7 +499,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
       </div>
       <div class="advisor-hero">
         <div class="advisor-hero-title">🤖 Your personal stock analyst</div>
-        <div class="advisor-hero-sub">Knows your positions and signal scores. Ask about your portfolio or any stock, sector, or market question.</div>
+        <div class="advisor-hero-sub">Knows your positions, cost basis, and 5-factor signal scores. Ask anything about your portfolio.</div>
         <div class="advisor-actions">
           <button class="primary" onclick="runFullAdvisor()">▶ Analyze full portfolio</button>
           <button class="ghost" onclick="runHealthCheck()">📊 Health check</button>
@@ -519,10 +517,6 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
           <button class="qq-btn" onclick="askChat('Am I too concentrated in any sector?')">Sector concentration?</button>
           <button class="qq-btn" onclick="askChat('What would happen to my portfolio if tech dropped 20%?')">Tech drop scenario</button>
           <button class="qq-btn" onclick="askChat('Which of my stocks have insiders buying recently?')">Insider buying?</button>
-          <button class="qq-btn" onclick="askChat('What are the strongest buy signals in the market right now?')">Strong buys today?</button>
-          <button class="qq-btn" onclick="askChat('What sectors look best heading into the next quarter?')">Best sectors now?</button>
-          <button class="qq-btn" onclick="askChat('What is the market telling us about interest rates right now?')">Rate outlook?</button>
-          <button class="qq-btn" onclick="askChat('What should a long-term investor be doing in this market?')">Long-term strategy?</button>
         </div>
         <div class="chat-messages" id="chat-messages">
           <div class="chat-msg ai">Hey! I have full context on your portfolio including positions, cost basis, and 5-factor signal scores. Ask me anything — "should I sell X?", "what's my biggest risk?", "which position looks best right now?"</div>
@@ -1113,9 +1107,12 @@ function quickResearch(sym){switchTabDirect('research');document.querySelectorAl
 async function analyzeStock(){
   const sym=document.getElementById('research-input').value.trim().toUpperCase();if(!sym)return;
   document.getElementById('research-result').innerHTML=`<div class="loading"><span class="spinner"></span>Loading full data for ${sym}...</div>`;
+  const dbScore=memCache[sym]?.score??null; // preserve score from DB scan if available
   delete memCache[sym];try{localStorage.removeItem('sc_'+sym);}catch{}
   const s=await fetchStockData(sym);
   if(!s){document.getElementById('research-result').innerHTML=`<div style="font-size:13px;color:var(--text3);padding:1rem 0">No data found for ${sym}.</div>`;return;}
+  // Use the score from the daily DB scan if available — keeps Research consistent with Trends
+  if(dbScore!==null) s.score=dbScore;
   const pos=portfolio.find(p=>p.sym===sym);
   const insiderNote=s.insiderBuying>0||s.insiderSelling>0?`<span style="color:var(--green);font-size:10px;font-family:var(--mono)">▲ ${s.insiderBuying} buys</span> <span style="color:var(--red);font-size:10px;font-family:var(--mono)">▼ ${s.insiderSelling} sells</span> (6mo)`:'No recent insider activity';
   const earningsNote=s.lastEarningsSurprise!=null?`Last earnings: <span class="${parseFloat(s.lastEarningsSurprise)>=0?'pos':'neg'}">${parseFloat(s.lastEarningsSurprise)>=0?'+':''}${s.lastEarningsSurprise}% vs estimate</span>`:'No earnings data';
@@ -1200,13 +1197,8 @@ async function summarizeNewsInline(cardId,headline,url,relatedTickers){
 function askShouldISell(sym){switchTabDirect('advisor');document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));document.querySelectorAll('.nav-item')[3].classList.add('active');askChat(`Should I sell my ${sym} position?`);}
 
 // ── AI ADVISOR ────────────────────────────────────────────────────────
-const ADVISOR_SYSTEM=`You are a sharp, direct personal stock analyst and financial advisor. You have access to the user's portfolio data including shares, average cost basis, current price, P&L, and composite signal scores with factor breakdowns.
-
-You can answer two types of questions:
-1. Portfolio questions — reference their specific positions, cost basis, P&L, and signal scores. Give a clear verdict (HOLD/SELL/ADD/TRIM) when asked about a position.
-2. General market questions — about any stock, sector, macro trends, news, or investing concepts. Answer these like a knowledgeable analyst even if the stock isn't in their portfolio.
-
-When answering: Be direct and specific. Reference signal scores and factor data when relevant. Keep responses focused — 3-5 sentences unless doing a full review. No disclaimers or "I'm not a financial advisor" hedging.`;
+const ADVISOR_SYSTEM=`You are a sharp, direct personal stock analyst with access to multi-factor signal data. You know the user's exact portfolio including shares, average cost basis, current price, P&L, and composite signal scores with factor breakdowns.
+When answering: Give a clear verdict first (HOLD/SELL/ADD/TRIM). Reference specific factor scores when relevant. Factor in both P&L AND signal quality. Be honest about weaknesses. Keep responses focused — 3-5 sentences unless doing full portfolio review. No disclaimers.`;
 
 async function getPortfolioStocks(){return portfolio.length?Promise.all(portfolio.map(p=>fetchStockData(p.sym))):[];}
 function buildPortfolioContext(stocks){
