@@ -1031,7 +1031,7 @@ async function loadScanFromDB() {
     const ageStr = ageMin < 60 ? ageMin + 'min ago' : Math.round(ageMin / 60) + 'h ago';
     document.getElementById('progress-wrap').style.display = 'block';
     document.getElementById('progress-bar').style.width = '100%';
-    setProgressLabel('✓ ' + scanResults.length + ' stocks scored · updated ' + ageStr + ' · refreshes 3x daily: 7am, 12pm, 4pm ET · 261 stocks across 12 sectors');
+    setProgressLabel('✓ ' + scanResults.length + ' stocks scored · updated ' + ageStr + ' · refreshes 3x daily: 7am, 12pm, 4pm ET');
     renderTrends(currentFilter);
   } catch(e) {
     setProgressLabel('Could not load scan data — click ↺ Refresh to try again');
