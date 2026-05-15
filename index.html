@@ -409,7 +409,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
     <!-- TRENDS -->
     <div id="tab-trends" class="panel active">
       <div class="page-title">Market Trends</div>
-      <div class="page-sub">261 stocks · S&P 500 large caps + high-growth names · 12 sectors · scored 3x daily</div>
+      <div class="page-sub">261 stocks · S&P 500 large caps + high-growth names · 12 sectors</div>
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:0.65rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
           <div class="progress-wrap" id="progress-wrap" style="margin-bottom:4px;display:none"><div class="progress-bar" id="progress-bar"></div></div>
@@ -1212,6 +1212,7 @@ Rules:
 - If asked about a stock in their portfolio, give a direct HOLD/SELL/ADD/TRIM verdict with reasoning.
 - If asked about ANY other stock or market topic, just answer it directly as a knowledgeable analyst — don't ask why they're asking, don't redirect to their portfolio, just answer the question.
 - Never refuse to analyze a stock because it's not in their portfolio. Treat every stock question as valid.
+- When signal scores are provided for a mentioned stock, reference them explicitly in your answer and reconcile them with your qualitative view. If the score is high but you have concerns, explain the discrepancy. If the score matches your view, confirm it.
 - Write in tight prose, not bullet points or bold headers. 3-5 sentences max unless doing a full portfolio review.
 - Only reference their portfolio positions when it genuinely adds context. Don't force portfolio mentions into every answer.
 - No disclaimers. No "I'm not a financial advisor." No hedging. Give real takes.
@@ -1310,9 +1311,23 @@ async function askChat(preset){
     }
   } catch {}
 
+  // Find any stock tickers mentioned in the question and inject their signal scores
+  let signalCtx = '';
+  if(scanResults && scanResults.length) {
+    const tickerMatches = question.toUpperCase().match(/\b[A-Z]{1,5}\b/g) || [];
+    const mentioned = scanResults.filter(s => tickerMatches.includes(s.sym));
+    if(mentioned.length) {
+      const lines = mentioned.map(s => {
+        const sc = s.scores || {};
+        return `${s.sym}: composite ${s.score}/100 (Analyst:${sc.analyst??'—'} Fundamental:${sc.fundamental??'—'} Earnings:${sc.earnings??'—'} Price:${sc.price??'—'}) · $${s.price?.toFixed(2)} · ${s.changePct>=0?'+':''}${s.changePct?.toFixed(2)}%${s.pe?' · P/E '+s.pe:''}${s.divYield?' · '+s.divYield+'% div':''}`;
+      });
+      signalCtx = '\n\nSignal scores for stocks mentioned:\n' + lines.join('\n');
+    }
+  }
+
   try{
     const portfolioCtx = portfolio.length ? '\n\nUser\'s portfolio:\n'+ctx : '';
-    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:1000,system:ADVISOR_SYSTEM+portfolioCtx+newsCtx,messages:chatHistory.slice(-10)});
+    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:1000,system:ADVISOR_SYSTEM+portfolioCtx+signalCtx+newsCtx,messages:chatHistory.slice(-10)});
     const text=data.content?.[0]?.text||'Could not get a response.';
     chatHistory.push({role:'assistant',content:text});
     thinkingEl.className='chat-msg ai';thinkingEl.textContent=text;
@@ -1333,7 +1348,10 @@ async function renderPortfolio(){
   const summary=document.getElementById('portfolio-summary'),list=document.getElementById('portfolio-list');
   if(!portfolio.length){summary.innerHTML='';list.innerHTML='<div style="font-size:13px;color:var(--text3);padding:0.75rem 0">No positions yet — add one below.</div>';return;}
   list.innerHTML=`<div class="loading"><span class="spinner"></span>Loading...</div>`;
-  const stocks=await Promise.all(portfolio.map(p=>fetchStockData(p.sym)));
+  const stocks=await Promise.all(portfolio.map(p=>{
+    const dbScore=scanResults.find(r=>r.sym===p.sym)?.score??null;
+    return fetchStockData(p.sym).then(s=>{if(s&&dbScore!==null)s.score=dbScore;return s;});
+  }));
   let tv=0,tc=0;stocks.forEach((s,i)=>{if(s){tv+=(s.price||0)*portfolio[i].shares;tc+=portfolio[i].avgCost*portfolio[i].shares;}});
   const pnl=tv-tc,pct=tc>0?(pnl/tc)*100:0;
   summary.innerHTML=`<div class="sum-card"><div class="sum-label">Market Value</div><div class="sum-val">${fmtD(tv)}</div></div><div class="sum-card"><div class="sum-label">Total Cost</div><div class="sum-val">${fmtD(tc)}</div></div><div class="sum-card"><div class="sum-label">Total P&L</div><div class="sum-val ${pnl>=0?'pos':'neg'}">${fmtD(pnl)}<span style="font-size:12px;font-weight:400;margin-left:5px">(${pct>=0?'+':''}${pct.toFixed(1)}%)</span></div></div>`;
@@ -1341,7 +1359,7 @@ async function renderPortfolio(){
     const s=stocks[i]||{price:0,changePct:0,name:p.sym,score:50,scores:{}};
     const mv=(s.price||0)*p.shares,cb=p.avgCost*p.shares,pl=mv-cb,plp=cb>0?(pl/cb)*100:0;
     return `<div class="pos-card">
-      <div class="pos-top"><div><div class="pos-sym">${p.sym}<span class="badge ${badgeCls(s.score)}" style="margin-left:8px">${getTierLabel(s.score)}</span></div><div class="pos-name">${s.name}</div></div>
+      <div class="pos-top"><div><div class="pos-sym">${p.sym}<span class="badge ${badgeCls(s.score)}" style="margin-left:8px">${s.score}/100 · ${getTierLabel(s.score)}</span></div><div class="pos-name">${s.name}</div></div>
       <div style="text-align:right"><div style="font-family:var(--mono);font-size:15px;font-weight:500">$${parseFloat(s.price||0).toFixed(2)}</div><div class="${parseFloat(s.changePct||0)>=0?'pos':'neg'}" style="font-family:var(--mono);font-size:11px;margin-top:2px">${fmt(s.changePct||0)}</div></div></div>
       <div style="margin:4px 0 6px">${scoreBar(s.score)}</div>
       ${s.scores&&Object.keys(s.scores).length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;font-size:10px;font-family:var(--mono)">${Object.entries({analyst:'Analyst',fundamental:'Fundmtl',earnings:'Earnings',insider:'Insider',price:'52W Pos'}).map(([k,l])=>{const v=s.scores[k];return v!=null?`<span style="color:${v>=70?'var(--green)':v>=45?'var(--yellow)':'var(--red)'}">${l}: ${v}</span>`:''}).join('')}</div>`:''}
@@ -1413,7 +1431,7 @@ async function renderWatching(){
   list.innerHTML=watching.map((w,i)=>{
     const s=stocks[i]||{price:0,changePct:0,name:w.sym,score:50};
     return `<div class="watch-card">
-      <div><div class="watch-sym">${w.sym}</div><span class="badge ${badgeCls(s.score)}">${getTierLabel(s.score)}</span></div>
+      <div><div class="watch-sym">${w.sym}</div><span class="badge ${badgeCls(s.score)}">${s.score}/100 · ${getTierLabel(s.score)}</span></div>
       <div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:3px"><span>${s.name}</span><span style="font-family:var(--mono)">${s.score}/100</span></div>${scoreBar(s.score)}</div>
       <div style="text-align:right;font-family:var(--mono);font-size:13px;flex-shrink:0"><div style="font-weight:500">$${parseFloat(s.price||0).toFixed(2)}</div><div class="${parseFloat(s.changePct||0)>=0?'pos':'neg'}" style="font-size:11px">${fmt(s.changePct||0)}</div></div>
       <div style="display:flex;flex-direction:column;gap:4px">
