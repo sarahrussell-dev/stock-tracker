@@ -409,7 +409,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
     <!-- TRENDS -->
     <div id="tab-trends" class="panel active">
       <div class="page-title">Market Trends</div>
-      <div class="page-sub">5-factor composite signal: analyst consensus · fundamentals · earnings · insider activity · price position</div>
+      <div class="page-sub">261 stocks · S&P 500 large caps + high-growth names · 12 sectors · scored 3x daily</div>
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:0.65rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
           <div class="progress-wrap" id="progress-wrap" style="margin-bottom:4px;display:none"><div class="progress-bar" id="progress-bar"></div></div>
@@ -1020,17 +1020,18 @@ async function loadScanFromDB() {
     if (!r.ok) throw new Error(r.status);
     const rows = await r.json();
     if (!rows || !rows.length) {
-      setProgressLabel('No scan data yet — click ↺ Refresh to run first scan');
+      setProgressLabel('No scan data yet — scores update automatically at 7am, 12pm, 4pm ET');
       return;
     }
     scanResults = rows.map(r => r.data).filter(Boolean).sort(sortFn());
     scanResults.forEach(s => { memCache[s.sym] = s; });
-    const updatedAt = new Date(rows[0].updated_at);
+    const mostRecent = rows.reduce((a,b) => new Date(a.updated_at) > new Date(b.updated_at) ? a : b);
+    const updatedAt = new Date(mostRecent.updated_at);
     const ageMin = Math.round((Date.now() - updatedAt.getTime()) / 60000);
     const ageStr = ageMin < 60 ? ageMin + 'min ago' : Math.round(ageMin / 60) + 'h ago';
     document.getElementById('progress-wrap').style.display = 'block';
     document.getElementById('progress-bar').style.width = '100%';
-    setProgressLabel('✓ ' + scanResults.length + ' stocks scored · updated ' + ageStr + ' · refreshes 3x daily: 7am, 12pm, 4pm ET');
+    setProgressLabel('✓ ' + scanResults.length + ' stocks scored · updated ' + ageStr + ' · refreshes 3x daily: 7am, 12pm, 4pm ET · 261 stocks across 12 sectors');
     renderTrends(currentFilter);
   } catch(e) {
     setProgressLabel('Could not load scan data — click ↺ Refresh to try again');
