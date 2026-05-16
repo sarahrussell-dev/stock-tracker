@@ -618,6 +618,7 @@ async function doLogin() {
   } else {
     currentUser = data.user;
     currentUser._accessToken = data.access_token;
+    try { localStorage.setItem('sb_session', JSON.stringify({ access_token: data.access_token, refresh_token: data.refresh_token, user: data.user })); } catch {}
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-shell').style.display = window.innerWidth <= 700 ? 'flex' : 'block';
     document.getElementById('user-email-display').textContent = currentUser.email;
@@ -645,6 +646,7 @@ async function doSignup() {
   } else if (data.user) {
     currentUser = data.user;
     currentUser._accessToken = data.access_token;
+    try { localStorage.setItem('sb_session', JSON.stringify({ access_token: data.access_token, refresh_token: data.refresh_token, user: data.user })); } catch {}
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-shell').style.display = window.innerWidth <= 700 ? 'flex' : 'block';
     document.getElementById('user-email-display').textContent = currentUser.email;
@@ -665,7 +667,7 @@ async function doLogout() {
   chatHistory = [];
   // Clear Supabase session from localStorage
   Object.keys(localStorage).forEach(k => {
-    if (k.includes('supabase') || k.includes('sb-')) localStorage.removeItem(k);
+    if (k.includes('supabase') || k.includes('sb-') || k === 'sb_session') localStorage.removeItem(k);
   });
   document.getElementById('auth-screen').style.display = 'flex';
   document.getElementById('app-shell').style.display = 'none';
@@ -678,8 +680,8 @@ async function doLogout() {
 // Restore existing session on page load
 (async function restoreSession() {
   try {
-    // Check localStorage for existing Supabase session
-    const keys = Object.keys(localStorage).filter(k => k.includes('supabase') || k.includes('sb-'));
+    // Check our saved session first, then fall back to supabase keys
+    const keys = ['sb_session', ...Object.keys(localStorage).filter(k => k.includes('supabase') || k.includes('sb-'))];
     let session = null;
     for (const k of keys) {
       try {
@@ -689,6 +691,22 @@ async function doLogout() {
       } catch {}
     }
     if (session?.access_token && session?.user) {
+      // Try to refresh the token in case it expired
+      if (session.refresh_token) {
+        try {
+          const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON },
+            body: JSON.stringify({ refresh_token: session.refresh_token })
+          });
+          const refreshed = await r.json();
+          if (refreshed.access_token) {
+            session.access_token = refreshed.access_token;
+            session.refresh_token = refreshed.refresh_token || session.refresh_token;
+            try { localStorage.setItem('sb_session', JSON.stringify({ ...session, access_token: refreshed.access_token, refresh_token: refreshed.refresh_token || session.refresh_token })); } catch {}
+          }
+        } catch {}
+      }
       currentUser = session.user;
       currentUser._accessToken = session.access_token;
       document.getElementById('auth-screen').style.display = 'none';
