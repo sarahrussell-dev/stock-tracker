@@ -289,6 +289,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
     padding: 1rem 0.85rem;
     padding-bottom: calc(70px + env(safe-area-inset-bottom));
     max-width: 100%;
+    overflow-x: hidden;
   }
 
   .page-title{ font-size: 18px; }
@@ -453,7 +454,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
     <!-- RESEARCH -->
     <div id="tab-research" class="panel">
       <div class="page-title">Research</div>
-      <div class="page-sub">Full 5-factor breakdown + AI analysis for any stock</div>
+      <div class="page-sub">Full 6-factor breakdown + AI analysis for any stock</div>
       <div class="row">
         <input type="text" id="research-input" placeholder="Enter ticker (e.g. AAPL, NVDA...)" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')analyzeStock()"/>
         <button class="primary" onclick="analyzeStock()">Analyze ↗</button>
@@ -562,8 +563,8 @@ async function claudeFetch(body) {
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }
-const CACHE_TTL = 24*60*60*1000; // 24h for fundamentals/metrics/recommendations
-const QUOTE_TTL = 15*60*1000; // 15min for prices/quotes
+const CACHE_TTL = 24*60*60*1000; // 24h for fundamentals
+const QUOTE_TTL = 15*60*1000; // 15min for prices
 const UNIVERSE_TTL = 7*24*60*60*1000;
 const PAGE_SIZE = 50;
 const CALLS_PER_MIN = 48;
@@ -618,9 +619,9 @@ async function doLogin() {
   } else {
     currentUser = data.user;
     currentUser._accessToken = data.access_token;
-    try { localStorage.setItem('sb_session', JSON.stringify({ access_token: data.access_token, refresh_token: data.refresh_token, user: data.user })); } catch {}
+    try{localStorage.setItem('sb_session',JSON.stringify({access_token:data.access_token,refresh_token:data.refresh_token,user:data.user}));}catch{}
     document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('app-shell').style.display = window.innerWidth <= 700 ? 'flex' : 'block';
+    document.getElementById('app-shell').style.display = 'block';
     document.getElementById('user-email-display').textContent = currentUser.email;
     document.getElementById('live-dot').style.display = 'inline-block';
     await loadUserData();
@@ -646,9 +647,9 @@ async function doSignup() {
   } else if (data.user) {
     currentUser = data.user;
     currentUser._accessToken = data.access_token;
-    try { localStorage.setItem('sb_session', JSON.stringify({ access_token: data.access_token, refresh_token: data.refresh_token, user: data.user })); } catch {}
+    try{localStorage.setItem('sb_session',JSON.stringify({access_token:data.access_token,refresh_token:data.refresh_token,user:data.user}));}catch{}
     document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('app-shell').style.display = window.innerWidth <= 700 ? 'flex' : 'block';
+    document.getElementById('app-shell').style.display = 'block';
     document.getElementById('user-email-display').textContent = currentUser.email;
     document.getElementById('live-dot').style.display = 'inline-block';
     await loadUserData();
@@ -680,7 +681,6 @@ async function doLogout() {
 // Restore existing session on page load
 (async function restoreSession() {
   try {
-    // Check our saved session first, then fall back to supabase keys
     const keys = ['sb_session', ...Object.keys(localStorage).filter(k => k.includes('supabase') || k.includes('sb-'))];
     let session = null;
     for (const k of keys) {
@@ -691,26 +691,17 @@ async function doLogout() {
       } catch {}
     }
     if (session?.access_token && session?.user) {
-      // Try to refresh the token in case it expired
       if (session.refresh_token) {
         try {
-          const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON },
-            body: JSON.stringify({ refresh_token: session.refresh_token })
-          });
-          const refreshed = await r.json();
-          if (refreshed.access_token) {
-            session.access_token = refreshed.access_token;
-            session.refresh_token = refreshed.refresh_token || session.refresh_token;
-            try { localStorage.setItem('sb_session', JSON.stringify({ ...session, access_token: refreshed.access_token, refresh_token: refreshed.refresh_token || session.refresh_token })); } catch {}
-          }
+          const rr = await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON},body:JSON.stringify({refresh_token:session.refresh_token})});
+          const rd = await rr.json();
+          if(rd.access_token){session.access_token=rd.access_token;session.refresh_token=rd.refresh_token||session.refresh_token;try{localStorage.setItem('sb_session',JSON.stringify(session));}catch{}}
         } catch {}
       }
       currentUser = session.user;
       currentUser._accessToken = session.access_token;
       document.getElementById('auth-screen').style.display = 'none';
-      document.getElementById('app-shell').style.display = window.innerWidth <= 700 ? 'flex' : 'block';
+      document.getElementById('app-shell').style.display = 'block';
       document.getElementById('user-email-display').textContent = currentUser.email;
       document.getElementById('live-dot').style.display = 'inline-block';
       await loadUserData();
@@ -837,57 +828,62 @@ function lsSet(sym, d) { try { localStorage.setItem('sc_'+sym, JSON.stringify(d)
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ── COMPOSITE SCORE ───────────────────────────────────────────────────
+function scoreVal(v, thresholds, fallback=50) {
+  if (v == null || isNaN(v)) return fallback;
+  for (const [threshold, score] of thresholds) { if (v > threshold) return score; }
+  return thresholds[thresholds.length-1][1];
+}
+function avgValid(vals) {
+  const valid = vals.filter(v => v != null && !isNaN(v));
+  return valid.length ? Math.round(valid.reduce((a,b)=>a+b,0)/valid.length) : null;
+}
 function computeCompositeScore(data) {
-  const { reco, metrics, earnings, insider, quote } = data;
-  const scores = { analyst:null, fundamental:null, earnings:null, insider:null, price:null };
-  const weights = { analyst:0.30, fundamental:0.30, earnings:0.15, insider:0.15, price:0.10 };
+  const { reco, metrics, earnings, quote } = data;
+  const m = metrics?.metric || {};
+  const scores = {};
+  const weights = { analyst:0.25, valuation:0.20, growth:0.20, profitability:0.15, momentum:0.10, health:0.10 };
+
+  // 1. ANALYST (25%)
   if (reco?.length) {
-    const r=reco[0],sb2=r.strongBuy||0,b=r.buy||0,h=r.hold||0,s=r.sell||0,ss=r.strongSell||0,t=sb2+b+h+s+ss;
-    scores.analyst = t ? Math.round((sb2*100+b*70+h*50+s*30)/t) : null;
+    const r=reco[0], sb=r.strongBuy||0, b=r.buy||0, h=r.hold||0, s=r.sell||0, ss=r.strongSell||0, t=sb+b+h+s+ss;
+    scores.analyst = t ? Math.round((sb*100+b*75+h*50+s*25)/t) : null;
   }
-  if (metrics?.metric) {
-    const m=metrics.metric; let pts=0,n=0;
-    const revG=m.revenueGrowthTTMYoy??m.revenueGrowthQuarterlyYoy;
-    if(revG!=null){pts+=revG>20?90:revG>10?75:revG>0?55:revG>-10?35:15;n++;}
-    const epsG=m.epsGrowthTTMYoy??m.epsGrowthQuarterlyYoy;
-    if(epsG!=null){pts+=epsG>30?90:epsG>15?75:epsG>0?55:epsG>-15?35:15;n++;}
-    const mg=m.netProfitMarginTTM??m.netProfitMarginAnnual;
-    if(mg!=null){pts+=mg>25?90:mg>15?75:mg>5?60:mg>0?40:20;n++;}
-    const de=m.totalDebt/m.totalEquity;
-    if(!isNaN(de)&&de>0){pts+=de<0.3?85:de<0.6?70:de<1?55:de<2?40:20;n++;}
-    const roe=m.roeTTM??m.roeAnnual;
-    if(roe!=null){pts+=roe>25?90:roe>15?75:roe>8?60:roe>0?40:15;n++;}
-    const dy=m.dividendYieldIndicatedAnnual??m.currentDividendYieldTTM??0;
-    if(dy>4){pts+=10;n+=0.1;}else if(dy>2){pts+=5;n+=0.05;}
-    scores.fundamental = n>0 ? Math.min(100,Math.round(pts/n)) : null;
-  }
-  if (earnings?.length) {
-    const recent=earnings.slice(0,4);
-    const beats=recent.filter(e=>e.actual!=null&&e.estimate!=null&&e.actual>e.estimate).length;
-    const ratio=recent.length>0?beats/recent.length:0.5;
-    let magnitude=50;
-    if(recent[0]?.actual!=null&&recent[0]?.estimate!=null&&recent[0].estimate!==0){
-      const pct=((recent[0].actual-recent[0].estimate)/Math.abs(recent[0].estimate))*100;
-      magnitude=pct>15?90:pct>5?75:pct>0?60:pct>-5?45:pct>-15?30:15;
-    }
-    scores.earnings = Math.round(ratio*70+magnitude*0.3);
-  }
-  if (insider?.data?.length) {
-    const recent=insider.data.filter(t=>{const ts=t.transactionDate?new Date(t.transactionDate).getTime():0;return Date.now()-ts<180*24*60*60*1000;});
-    let buyVal=0,sellVal=0;
-    recent.forEach(t=>{const val=Math.abs(t.share||0)*Math.abs(t.transactionPrice||0);if(t.transactionCode==='P'||t.change>0)buyVal+=val;else if(t.transactionCode==='S'||t.change<0)sellVal+=val;});
-    const total=buyVal+sellVal;
-    scores.insider = total>0 ? Math.round((buyVal/total)*100) : 50;
-  }
-  if (quote?.c && metrics?.metric) {
-    const hi=metrics.metric['52WeekHigh'],lo=metrics.metric['52WeekLow'],price=quote.c;
-    if(hi&&lo&&hi>lo){const pos=(price-lo)/(hi-lo);scores.price=pos>0.9?60:pos>0.7?75:pos>0.3?80:pos>0.1?65:50;}
-  }
-  let total=0,weightSum=0;
-  Object.entries(scores).forEach(([k,v])=>{if(v!=null){total+=v*weights[k];weightSum+=weights[k];}});
+  // 2. VALUATION (20%)
+  { const vals=[];
+    const pe=m.peBasicExclExtraTTM; if(pe!=null&&pe>0&&pe<500) vals.push(scoreVal(pe,[[15,90],[20,80],[30,65],[40,50],[60,35],[9999,20]]));
+    const ps=m.psTTM; if(ps!=null&&ps>0) vals.push(scoreVal(ps,[[1,90],[2,75],[4,60],[8,40],[9999,25]]));
+    const ev=m.evEbitdaTTM; if(ev!=null&&ev>0&&ev<200) vals.push(scoreVal(ev,[[8,90],[12,75],[18,60],[25,40],[9999,20]]));
+    scores.valuation=avgValid(vals); }
+  // 3. GROWTH (20%)
+  { const vals=[];
+    const rg=m.revenueGrowthTTMYoy??m.revenueGrowthQuarterlyYoy; if(rg!=null) vals.push(scoreVal(rg,[[30,90],[20,80],[10,70],[0,55],[-10,35],[-9999,15]]));
+    const eg=m.epsGrowthTTMYoy??m.epsGrowthQuarterlyYoy; if(eg!=null) vals.push(scoreVal(eg,[[30,90],[20,80],[10,70],[0,55],[-10,35],[-9999,15]]));
+    const fcf=m.freeCashFlowMarginTTM??m.fcfMarginTTM; if(fcf!=null) vals.push(scoreVal(fcf,[[20,90],[10,75],[0,55],[-9999,30]]));
+    scores.growth=avgValid(vals); }
+  // 4. PROFITABILITY (15%)
+  { const vals=[];
+    const gm=m.grossMarginTTM??m.grossMarginAnnual; if(gm!=null) vals.push(scoreVal(gm,[[60,90],[40,75],[25,60],[10,45],[-9999,25]]));
+    const om=m.operatingMarginTTM??m.operatingMarginAnnual; if(om!=null) vals.push(scoreVal(om,[[25,90],[15,75],[8,60],[0,45],[-9999,20]]));
+    const roe=m.roeTTM??m.roeAnnual; if(roe!=null) vals.push(scoreVal(roe,[[25,90],[15,75],[8,60],[0,40],[-9999,15]]));
+    scores.profitability=avgValid(vals); }
+  // 5. MOMENTUM (10%)
+  { const vals=[];
+    const r13=m['13WeekPriceReturnDaily']; if(r13!=null) vals.push(scoreVal(r13,[[20,85],[10,75],[0,60],[-10,45],[-9999,25]]));
+    const r26=m['26WeekPriceReturnDaily']; if(r26!=null) vals.push(scoreVal(r26,[[30,85],[15,75],[0,60],[-15,45],[-9999,25]]));
+    scores.momentum=avgValid(vals); }
+  // 6. FINANCIAL HEALTH (10%)
+  { const vals=[];
+    const de=m.debtToEquityAnnual; if(de!=null&&de>=0) vals.push(scoreVal(de,[[0.3,90],[0.6,75],[1.0,60],[2.0,45],[9999,25]]));
+    const cr=m.currentRatioAnnual; if(cr!=null) vals.push(scoreVal(cr,[[2,85],[1.5,70],[1,55],[0,35]]));
+    const ic=m.interestCoverageAnnual; if(ic!=null) vals.push(scoreVal(ic,[[10,90],[5,75],[2,55],[0,40],[-9999,20]]));
+    scores.health=avgValid(vals); }
+
+  let total=0, weightSum=0;
+  for(const [k,v] of Object.entries(scores)) { if(v!=null){total+=v*weights[k];weightSum+=weights[k];} }
   return { composite: weightSum>0?Math.round(total/weightSum):50, scores };
 }
 
+// ── HELPERS ───────────────────────────────────────────────────────────
 // ── HELPERS ───────────────────────────────────────────────────────────
 const getTier=s=>s>=80?'strong-buy':s>=60?'buy':s>=40?'hold':s>=20?'sell':'strong-sell';
 const getTierLabel=s=>s>=80?'Strong Buy':s>=60?'Buy':s>=40?'Hold':s>=20?'Sell':'Strong Sell';
@@ -910,11 +906,8 @@ function signalBreakdownHTML(scores){
 
 // ── FETCH STOCK DATA ──────────────────────────────────────────────────
 async function fetchStockData(sym) {
-  // Use short TTL for price data, long TTL for fundamentals
-  const now = Date.now();
-  if(memCache[sym] && (now - memCache[sym].ts) < QUOTE_TTL) return memCache[sym];
-  const cached=lsGet(sym);
-  if(cached && (now - cached.ts) < QUOTE_TTL){memCache[sym]=cached;return cached;}
+  if(memCache[sym]&&(Date.now()-memCache[sym].ts)<QUOTE_TTL) return memCache[sym];
+  const cached=lsGet(sym);if(cached&&(Date.now()-cached.ts)<QUOTE_TTL){memCache[sym]=cached;return cached;}
   try {
     const [quote,profile,metrics,reco,earnings,insider]=await Promise.all([
       fhGet(`/quote?symbol=${sym}`),
@@ -1038,18 +1031,18 @@ async function loadScanFromDB() {
     if (!r.ok) throw new Error(r.status);
     const rows = await r.json();
     if (!rows || !rows.length) {
-      setProgressLabel('No scan data yet — scores update automatically at 7am, 12pm, 4pm ET');
+      setProgressLabel('No scan data yet — click ↺ Refresh to run first scan');
       return;
     }
     scanResults = rows.map(r => r.data).filter(Boolean).sort(sortFn());
     scanResults.forEach(s => { memCache[s.sym] = s; });
-    const mostRecent = rows.reduce((a,b) => new Date(a.updated_at) > new Date(b.updated_at) ? a : b);
+    const mostRecent=rows.reduce((a,b)=>new Date(a.updated_at)>new Date(b.updated_at)?a:b);
     const updatedAt = new Date(mostRecent.updated_at);
     const ageMin = Math.round((Date.now() - updatedAt.getTime()) / 60000);
     const ageStr = ageMin < 60 ? ageMin + 'min ago' : Math.round(ageMin / 60) + 'h ago';
     document.getElementById('progress-wrap').style.display = 'block';
     document.getElementById('progress-bar').style.width = '100%';
-    setProgressLabel('✓ ' + scanResults.length + ' stocks scored · updated ' + ageStr + ' · refreshes 3x daily: 7am, 12pm, 4pm ET');
+    setProgressLabel('✓ ' + scanResults.length + ' stocks scored · updated ' + ageStr + ' · refreshes 3x daily: 9:40am, 1pm, 4:10pm ET');
     renderTrends(currentFilter);
   } catch(e) {
     setProgressLabel('Could not load scan data — click ↺ Refresh to try again');
@@ -1115,7 +1108,7 @@ function renderTrends(filter){
       <div class="sc-right">
         <div class="sc-price">$${parseFloat(s.price||0).toFixed(2)}</div>
         <div class="sc-chg ${parseFloat(s.changePct||0)>=0?'pos':'neg'}">${fmt(s.changePct||0)}</div>
-        <div class="sc-pe">${s.pe?'P/E '+s.pe:''}${s.divYield?' · '+s.divYield+'% div':''}</div>
+        <div class="sc-pe">${s.pe?'P/E '+s.pe:''}${s.divYield?' · '+s.divYield+'% div':''}${s.high52&&s.low52?' · 52W $'+s.low52.toFixed(0)+'-$'+s.high52.toFixed(0):''}</div>
       </div>
     </div>`).join('');
   if(totalPages>1){
@@ -1138,7 +1131,7 @@ async function analyzeStock(){
   const dbScore=memCache[sym]?.score??null;
   delete memCache[sym];try{localStorage.removeItem('sc_'+sym);}catch{}
   const s=await fetchStockData(sym);
-  if(s&&dbScore!==null) s.score=dbScore;
+  if(s&&dbScore!==null)s.score=dbScore;
   if(!s){document.getElementById('research-result').innerHTML=`<div style="font-size:13px;color:var(--text3);padding:1rem 0">No data found for ${sym}.</div>`;return;}
   const pos=portfolio.find(p=>p.sym===sym);
   const insiderNote=s.insiderBuying>0||s.insiderSelling>0?`<span style="color:var(--green);font-size:10px;font-family:var(--mono)">▲ ${s.insiderBuying} buys</span> <span style="color:var(--red);font-size:10px;font-family:var(--mono)">▼ ${s.insiderSelling} sells</span> (6mo)`:'No recent insider activity';
@@ -1228,15 +1221,14 @@ const ADVISOR_SYSTEM=`You are a sharp, direct personal stock analyst. You have t
 
 Rules:
 - If asked about a stock in their portfolio, give a direct HOLD/SELL/ADD/TRIM verdict with reasoning.
-- If asked about ANY other stock or market topic, just answer it directly as a knowledgeable analyst — don't ask why they're asking, don't redirect to their portfolio, just answer the question.
+- If asked about ANY other stock or market topic, answer it directly as a knowledgeable analyst — don't ask why they're asking, don't redirect to their portfolio.
 - Never refuse to analyze a stock because it's not in their portfolio. Treat every stock question as valid.
-- When signal scores are provided for a mentioned stock, reference them explicitly in your answer and reconcile them with your qualitative view. If the score is high but you have concerns, explain the discrepancy. If the score matches your view, confirm it.
+- When signal scores are provided for a mentioned stock, reference them explicitly and reconcile with your qualitative view.
 - Write in tight prose, not bullet points or bold headers. 3-5 sentences max unless doing a full portfolio review.
-- Only reference their portfolio positions when it genuinely adds context. Don't force portfolio mentions into every answer.
-- No disclaimers. No "I'm not a financial advisor." No hedging. Give real takes.
-- Prices shown are live as of this session.`;
+- Only reference portfolio positions when it genuinely adds context.
+- No disclaimers. No hedging. Give real takes. Prices shown are live as of this session.`;
 
-async function getPortfolioStocks(){return portfolio.length?Promise.all(portfolio.map(p=>fetchStockData(p.sym))):[];}
+async function getPortfolioStocks(){return portfolio.length?Promise.all(portfolio.map(p=>{const dbScore=scanResults.find(r=>r.sym===p.sym)?.score??null;return fetchStockData(p.sym).then(s=>{if(s&&dbScore!==null)s.score=dbScore;return s;});})):[];}
 function buildPortfolioContext(stocks){
   if(!portfolio.length)return 'No portfolio positions.';
   return portfolio.map((p,i)=>{
@@ -1312,37 +1304,20 @@ async function askChat(preset){
   msgs.innerHTML+=`<div class="chat-msg user">${question}</div>`;
   const thinkingEl=document.createElement('div');thinkingEl.className='chat-msg ai thinking';thinkingEl.textContent='Thinking...';
   msgs.appendChild(thinkingEl);msgs.scrollTop=msgs.scrollHeight;
-
-  // Clear price cache so advisor always gets fresh quotes
-  portfolio.forEach(p=>{ if(memCache[p.sym]) delete memCache[p.sym]; });
-
+  // Clear price cache for fresh quotes
+  portfolio.forEach(p=>{if(memCache[p.sym])delete memCache[p.sym];});
   const stocks=await getPortfolioStocks();const ctx=buildPortfolioContext(stocks);
   chatHistory.push({role:'user',content:question});
-
-  // Fetch recent news headlines for context
-  let newsCtx = '';
-  try {
-    const news = await fhGet('/news?category=general');
-    if(Array.isArray(news) && news.length) {
-      const headlines = news.slice(0,8).map(n=>n.headline).join('\n');
-      newsCtx = '\n\nToday\'s market headlines:\n' + headlines;
-    }
-  } catch {}
-
-  // Find any stock tickers mentioned in the question and inject their signal scores
-  let signalCtx = '';
-  if(scanResults && scanResults.length) {
-    const tickerMatches = question.toUpperCase().match(/\b[A-Z]{1,5}\b/g) || [];
-    const mentioned = scanResults.filter(s => tickerMatches.includes(s.sym));
-    if(mentioned.length) {
-      const lines = mentioned.map(s => {
-        const sc = s.scores || {};
-        return `${s.sym}: composite ${s.score}/100 (Analyst:${sc.analyst??'—'} Fundamental:${sc.fundamental??'—'} Earnings:${sc.earnings??'—'} Price:${sc.price??'—'}) · $${s.price?.toFixed(2)} · ${s.changePct>=0?'+':''}${s.changePct?.toFixed(2)}%${s.pe?' · P/E '+s.pe:''}${s.divYield?' · '+s.divYield+'% div':''}`;
-      });
-      signalCtx = '\n\nSignal scores for stocks mentioned:\n' + lines.join('\n');
-    }
+  // Fetch news for context
+  let newsCtx='';
+  try{const news=await fhGet('/news?category=general');if(Array.isArray(news)&&news.length){newsCtx='\n\nToday\'s market headlines:\n'+news.slice(0,8).map(n=>n.headline).join('\n');}}catch{}
+  // Inject signal scores for mentioned tickers
+  let signalCtx='';
+  if(scanResults&&scanResults.length){
+    const tickers=(question.toUpperCase().match(/\b[A-Z]{1,5}\b/g)||[]);
+    const mentioned=scanResults.filter(s=>tickers.includes(s.sym));
+    if(mentioned.length){const sc2=mentioned.map(s=>{const sc=s.scores||{};return `${s.sym}: composite ${s.score}/100 (Analyst:${sc.analyst??'—'} Valuation:${sc.valuation??'—'} Growth:${sc.growth??'—'} Profit:${sc.profitability??'—'} Momentum:${sc.momentum??'—'} Health:${sc.health??'—'}) · $${s.price?.toFixed(2)} · ${s.changePct>=0?'+':''}${s.changePct?.toFixed(2)}%${s.pe?' · P/E '+s.pe:''}`;});signalCtx='\n\nSignal scores for mentioned stocks:\n'+sc2.join('\n');}
   }
-
   try{
     const portfolioCtx = portfolio.length ? '\n\nUser\'s portfolio:\n'+ctx : '';
     const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:1000,system:ADVISOR_SYSTEM+portfolioCtx+signalCtx+newsCtx,messages:chatHistory.slice(-10)});
@@ -1366,10 +1341,7 @@ async function renderPortfolio(){
   const summary=document.getElementById('portfolio-summary'),list=document.getElementById('portfolio-list');
   if(!portfolio.length){summary.innerHTML='';list.innerHTML='<div style="font-size:13px;color:var(--text3);padding:0.75rem 0">No positions yet — add one below.</div>';return;}
   list.innerHTML=`<div class="loading"><span class="spinner"></span>Loading...</div>`;
-  const stocks=await Promise.all(portfolio.map(p=>{
-    const dbScore=scanResults.find(r=>r.sym===p.sym)?.score??null;
-    return fetchStockData(p.sym).then(s=>{if(s&&dbScore!==null)s.score=dbScore;return s;});
-  }));
+  const stocks=await Promise.all(portfolio.map(p=>fetchStockData(p.sym)));
   let tv=0,tc=0;stocks.forEach((s,i)=>{if(s){tv+=(s.price||0)*portfolio[i].shares;tc+=portfolio[i].avgCost*portfolio[i].shares;}});
   const pnl=tv-tc,pct=tc>0?(pnl/tc)*100:0;
   summary.innerHTML=`<div class="sum-card"><div class="sum-label">Market Value</div><div class="sum-val">${fmtD(tv)}</div></div><div class="sum-card"><div class="sum-label">Total Cost</div><div class="sum-val">${fmtD(tc)}</div></div><div class="sum-card"><div class="sum-label">Total P&L</div><div class="sum-val ${pnl>=0?'pos':'neg'}">${fmtD(pnl)}<span style="font-size:12px;font-weight:400;margin-left:5px">(${pct>=0?'+':''}${pct.toFixed(1)}%)</span></div></div>`;
@@ -1377,10 +1349,10 @@ async function renderPortfolio(){
     const s=stocks[i]||{price:0,changePct:0,name:p.sym,score:50,scores:{}};
     const mv=(s.price||0)*p.shares,cb=p.avgCost*p.shares,pl=mv-cb,plp=cb>0?(pl/cb)*100:0;
     return `<div class="pos-card">
-      <div class="pos-top"><div><div class="pos-sym">${p.sym}<span class="badge ${badgeCls(s.score)}" style="margin-left:8px">${s.score}/100 · ${getTierLabel(s.score)}</span></div><div class="pos-name">${s.name}</div></div>
-      <div style="text-align:right"><div style="font-family:var(--mono);font-size:15px;font-weight:500">$${parseFloat(s.price||0).toFixed(2)}</div><div class="${parseFloat(s.changePct||0)>=0?'pos':'neg'}" style="font-family:var(--mono);font-size:11px;margin-top:2px">${fmt(s.changePct||0)}</div></div></div>
+      <div class="pos-top"><div><div class="pos-sym">${p.sym}<span class="badge ${badgeCls(s.score)}" style="margin-left:8px">${getTierLabel(s.score)}</span></div><div class="pos-name">${s.name}</div></div>
+      <div style="text-align:right"><div style="font-family:var(--mono);font-size:15px;font-weight:500">$${parseFloat(s.price||0).toFixed(2)}</div><div style="font-size:11px;font-family:var(--mono);color:${getTierColor(s.score)};margin-top:2px">${s.score}/100</div><div class="${parseFloat(s.changePct||0)>=0?'pos':'neg'}" style="font-family:var(--mono);font-size:11px;margin-top:2px">${fmt(s.changePct||0)}</div></div></div>
       <div style="margin:4px 0 6px">${scoreBar(s.score)}</div>
-      ${s.scores&&Object.keys(s.scores).length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;font-size:10px;font-family:var(--mono)">${Object.entries({analyst:'Analyst',fundamental:'Fundmtl',earnings:'Earnings',insider:'Insider',price:'52W Pos'}).map(([k,l])=>{const v=s.scores[k];return v!=null?`<span style="color:${v>=70?'var(--green)':v>=45?'var(--yellow)':'var(--red)'}">${l}: ${v}</span>`:''}).join('')}</div>`:''}
+      ${s.scores&&Object.keys(s.scores).length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;font-size:10px;font-family:var(--mono)">${Object.entries({analyst:'Analyst',valuation:'Val',growth:'Growth',profitability:'Profit',momentum:'Momentum',health:'Health'}).map(([k,l])=>{const v=s.scores[k];return v!=null?`<span style="color:${v>=70?'var(--green)':v>=45?'var(--yellow)':'var(--red)'}">${l}: ${v}</span>`:''}).join('')}</div>`:''}
       <div class="pos-stats">
         <div class="stat-box"><div class="stat-label">Shares</div><div class="stat-val">${p.shares}</div></div>
         <div class="stat-box"><div class="stat-label">Avg cost</div><div class="stat-val">${fmtD(p.avgCost)}</div></div>
@@ -1449,7 +1421,7 @@ async function renderWatching(){
   list.innerHTML=watching.map((w,i)=>{
     const s=stocks[i]||{price:0,changePct:0,name:w.sym,score:50};
     return `<div class="watch-card">
-      <div><div class="watch-sym">${w.sym}</div><span class="badge ${badgeCls(s.score)}">${s.score}/100 · ${getTierLabel(s.score)}</span></div>
+      <div><div class="watch-sym">${w.sym}</div><span class="badge ${badgeCls(s.score)}">${getTierLabel(s.score)}</span></div>
       <div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:3px"><span>${s.name}</span><span style="font-family:var(--mono)">${s.score}/100</span></div>${scoreBar(s.score)}</div>
       <div style="text-align:right;font-family:var(--mono);font-size:13px;flex-shrink:0"><div style="font-weight:500">$${parseFloat(s.price||0).toFixed(2)}</div><div class="${parseFloat(s.changePct||0)>=0?'pos':'neg'}" style="font-size:11px">${fmt(s.changePct||0)}</div></div>
       <div style="display:flex;flex-direction:column;gap:4px">
