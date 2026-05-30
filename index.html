@@ -836,59 +836,55 @@ function lsGet(sym) { try { const d = JSON.parse(localStorage.getItem('sc_'+sym)
 function lsSet(sym, d) { try { localStorage.setItem('sc_'+sym, JSON.stringify(d)); } catch {} }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ── COMPOSITE SCORE ───────────────────────────────────────────────────
+/// ── COMPOSITE SCORE v2 ─────────────────────────────────────────────
+function scoreVal(v, thresholds, fallback=50) {
+  if (v == null || isNaN(v)) return fallback;
+  for (const [threshold, score] of thresholds) { if (v > threshold) return score; }
+  return thresholds[thresholds.length-1][1];
+}
+function avgValid(vals) {
+  const valid = vals.filter(v => v != null && !isNaN(v));
+  return valid.length ? Math.round(valid.reduce((a,b)=>a+b,0)/valid.length) : null;
+}
 function computeCompositeScore(data) {
-  const { reco, metrics, earnings, insider, quote } = data;
-  const scores = { analyst:null, fundamental:null, earnings:null, insider:null, price:null };
-  const weights = { analyst:0.30, fundamental:0.30, earnings:0.15, insider:0.15, price:0.10 };
+  const { reco, metrics, earnings, quote } = data;
+  const m = metrics?.metric || {};
+  const scores = {};
+  const weights = { analyst:0.25, valuation:0.20, growth:0.20, profitability:0.15, momentum:0.10, health:0.10 };
   if (reco?.length) {
-    const r=reco[0],sb2=r.strongBuy||0,b=r.buy||0,h=r.hold||0,s=r.sell||0,ss=r.strongSell||0,t=sb2+b+h+s+ss;
-    scores.analyst = t ? Math.round((sb2*100+b*70+h*50+s*30)/t) : null;
+    const r=reco[0], sb=r.strongBuy||0, b=r.buy||0, h=r.hold||0, s=r.sell||0, ss=r.strongSell||0, t=sb+b+h+s+ss;
+    scores.analyst = t ? Math.round((sb*100+b*75+h*50+s*25)/t) : null;
   }
-  if (metrics?.metric) {
-    const m=metrics.metric; let pts=0,n=0;
-    const revG=m.revenueGrowthTTMYoy??m.revenueGrowthQuarterlyYoy;
-    if(revG!=null){pts+=revG>20?90:revG>10?75:revG>0?55:revG>-10?35:15;n++;}
-    const epsG=m.epsGrowthTTMYoy??m.epsGrowthQuarterlyYoy;
-    if(epsG!=null){pts+=epsG>30?90:epsG>15?75:epsG>0?55:epsG>-15?35:15;n++;}
-    const mg=m.netProfitMarginTTM??m.netProfitMarginAnnual;
-    if(mg!=null){pts+=mg>25?90:mg>15?75:mg>5?60:mg>0?40:20;n++;}
-    const de=m.totalDebt/m.totalEquity;
-    if(!isNaN(de)&&de>0){pts+=de<0.3?85:de<0.6?70:de<1?55:de<2?40:20;n++;}
-    const roe=m.roeTTM??m.roeAnnual;
-    if(roe!=null){pts+=roe>25?90:roe>15?75:roe>8?60:roe>0?40:15;n++;}
-    const dy=m.dividendYieldIndicatedAnnual??m.currentDividendYieldTTM??0;
-    if(dy>4){pts+=10;n+=0.1;}else if(dy>2){pts+=5;n+=0.05;}
-    scores.fundamental = n>0 ? Math.min(100,Math.round(pts/n)) : null;
-  }
-  if (earnings?.length) {
-    const recent=earnings.slice(0,4);
-    const beats=recent.filter(e=>e.actual!=null&&e.estimate!=null&&e.actual>e.estimate).length;
-    const ratio=recent.length>0?beats/recent.length:0.5;
-    let magnitude=50;
-    if(recent[0]?.actual!=null&&recent[0]?.estimate!=null&&recent[0].estimate!==0){
-      const pct=((recent[0].actual-recent[0].estimate)/Math.abs(recent[0].estimate))*100;
-      magnitude=pct>15?90:pct>5?75:pct>0?60:pct>-5?45:pct>-15?30:15;
-    }
-    scores.earnings = Math.round(ratio*70+magnitude*0.3);
-  }
-  if (insider?.data?.length) {
-    const recent=insider.data.filter(t=>{const ts=t.transactionDate?new Date(t.transactionDate).getTime():0;return Date.now()-ts<180*24*60*60*1000;});
-    let buyVal=0,sellVal=0;
-    recent.forEach(t=>{const val=Math.abs(t.share||0)*Math.abs(t.transactionPrice||0);if(t.transactionCode==='P'||t.change>0)buyVal+=val;else if(t.transactionCode==='S'||t.change<0)sellVal+=val;});
-    const total=buyVal+sellVal;
-    scores.insider = total>0 ? Math.round((buyVal/total)*100) : 50;
-  }
-  if (quote?.c && metrics?.metric) {
-    const hi=metrics.metric['52WeekHigh'],lo=metrics.metric['52WeekLow'],price=quote.c;
-    if(hi&&lo&&hi>lo){const pos=(price-lo)/(hi-lo);scores.price=pos>0.9?60:pos>0.7?75:pos>0.3?80:pos>0.1?65:50;}
-  }
-  let total=0,weightSum=0;
-  Object.entries(scores).forEach(([k,v])=>{if(v!=null){total+=v*weights[k];weightSum+=weights[k];}});
+  { const vals=[];
+    const pe=m.peBasicExclExtraTTM; if(pe!=null&&pe>0&&pe<500) vals.push(scoreVal(pe,[[15,90],[20,80],[30,65],[40,50],[60,35],[9999,20]]));
+    const ps=m.psTTM; if(ps!=null&&ps>0) vals.push(scoreVal(ps,[[1,90],[2,75],[4,60],[8,40],[9999,25]]));
+    const ev=m.evEbitdaTTM; if(ev!=null&&ev>0&&ev<200) vals.push(scoreVal(ev,[[8,90],[12,75],[18,60],[25,40],[9999,20]]));
+    scores.valuation=avgValid(vals); }
+  { const vals=[];
+    const rg=m.revenueGrowthTTMYoy??m.revenueGrowthQuarterlyYoy; if(rg!=null) vals.push(scoreVal(rg,[[30,90],[20,80],[10,70],[0,55],[-10,35],[-9999,15]]));
+    const eg=m.epsGrowthTTMYoy??m.epsGrowthQuarterlyYoy; if(eg!=null) vals.push(scoreVal(eg,[[30,90],[20,80],[10,70],[0,55],[-10,35],[-9999,15]]));
+    const fcf=m.freeCashFlowMarginTTM??m.fcfMarginTTM; if(fcf!=null) vals.push(scoreVal(fcf,[[20,90],[10,75],[0,55],[-9999,30]]));
+    scores.growth=avgValid(vals); }
+  { const vals=[];
+    const gm=m.grossMarginTTM??m.grossMarginAnnual; if(gm!=null) vals.push(scoreVal(gm,[[60,90],[40,75],[25,60],[10,45],[-9999,25]]));
+    const om=m.operatingMarginTTM??m.operatingMarginAnnual; if(om!=null) vals.push(scoreVal(om,[[25,90],[15,75],[8,60],[0,45],[-9999,20]]));
+    const roe=m.roeTTM??m.roeAnnual; if(roe!=null) vals.push(scoreVal(roe,[[25,90],[15,75],[8,60],[0,40],[-9999,15]]));
+    scores.profitability=avgValid(vals); }
+  { const vals=[];
+    const r13=m['13WeekPriceReturnDaily']; if(r13!=null) vals.push(scoreVal(r13,[[20,85],[10,75],[0,60],[-10,45],[-9999,25]]));
+    const r26=m['26WeekPriceReturnDaily']; if(r26!=null) vals.push(scoreVal(r26,[[30,85],[15,75],[0,60],[-15,45],[-9999,25]]));
+    scores.momentum=avgValid(vals); }
+  { const vals=[];
+    const de=m.debtToEquityAnnual??m['totalDebt/totalEquityAnnual']; if(de!=null&&de>=0) vals.push(scoreVal(de,[[0.3,90],[0.6,75],[1.0,60],[2.0,45],[9999,25]]));
+    const cr=m.currentRatioAnnual; if(cr!=null) vals.push(scoreVal(cr,[[2,85],[1.5,70],[1,55],[0,35]]));
+    const ic=m.interestCoverageAnnual??m.netInterestCoverageAnnual??m.netInterestCoverageTTM; if(ic!=null) vals.push(scoreVal(ic,[[10,90],[5,75],[2,55],[0,40],[-9999,20]]));
+    scores.health=avgValid(vals); }
+  let total=0, weightSum=0;
+  for(const [k,v] of Object.entries(scores)) { if(v!=null){total+=v*weights[k];weightSum+=weights[k];} }
   return { composite: weightSum>0?Math.round(total/weightSum):50, scores };
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────
+// ── HELPERS ─────────────────────────────────────────────────────────
 const getTier=s=>s>=80?'strong-buy':s>=60?'buy':s>=40?'hold':s>=20?'sell':'strong-sell';
 const getTierLabel=s=>s>=80?'Strong Buy':s>=60?'Buy':s>=40?'Hold':s>=20?'Sell':'Strong Sell';
 const getTierColor=s=>s>=80?'var(--sb)':s>=60?'var(--b)':s>=40?'var(--h)':s>=20?'var(--s)':'var(--ss)';
@@ -1377,7 +1373,7 @@ async function renderPortfolio(){
     const s=stocks[i]||{price:0,changePct:0,name:p.sym,score:50,scores:{}};
     const mv=(s.price||0)*p.shares,cb=p.avgCost*p.shares,pl=mv-cb,plp=cb>0?(pl/cb)*100:0;
     return `<div class="pos-card">
-      <div class="pos-top"><div><div class="pos-sym">${p.sym}<span class="badge ${badgeCls(s.score)}" style="margin-left:8px">${s.score}/100 · ${getTierLabel(s.score)}</span></div><div class="pos-name">${s.name}</div></div>
+      <div class="pos-top"><div><div class="pos-sym">${p.sym}<span class="badge ${badgeCls(s.score)}" style="margin-left:8px">${getTierLabel(s.score)}</span></div><div class="pos-name">${s.name}</div></div>
       <div style="text-align:right"><div style="font-family:var(--mono);font-size:15px;font-weight:500">$${parseFloat(s.price||0).toFixed(2)}</div><div class="${parseFloat(s.changePct||0)>=0?'pos':'neg'}" style="font-family:var(--mono);font-size:11px;margin-top:2px">${fmt(s.changePct||0)}</div></div></div>
       <div style="margin:4px 0 6px">${scoreBar(s.score)}</div>
       ${s.scores&&Object.keys(s.scores).length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;font-size:10px;font-family:var(--mono)">${Object.entries({analyst:'Analyst',valuation:'Val',growth:'Growth',profitability:'Profit',momentum:'Momentum',health:'Health'}).map(([k,l])=>{const v=s.scores[k];return v!=null?`<span style="color:${v>=70?'var(--green)':v>=45?'var(--yellow)':'var(--red)'}">${l}: ${v}</span>`:''}).join('')}</div>`:''}
@@ -1449,7 +1445,7 @@ async function renderWatching(){
   list.innerHTML=watching.map((w,i)=>{
     const s=stocks[i]||{price:0,changePct:0,name:w.sym,score:50};
     return `<div class="watch-card">
-      <div><div class="watch-sym">${w.sym}</div><span class="badge ${badgeCls(s.score)}">${s.score}/100 · ${getTierLabel(s.score)}</span></div>
+      <div><div class="watch-sym">${w.sym}</div><span class="badge ${badgeCls(s.score)}">${getTierLabel(s.score)}</span></div>
       <div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:3px"><span>${s.name}</span><span style="font-family:var(--mono)">${s.score}/100</span></div>${scoreBar(s.score)}</div>
       <div style="text-align:right;font-family:var(--mono);font-size:13px;flex-shrink:0"><div style="font-weight:500">$${parseFloat(s.price||0).toFixed(2)}</div><div class="${parseFloat(s.changePct||0)>=0?'pos':'neg'}" style="font-size:11px">${fmt(s.changePct||0)}</div></div>
       <div style="display:flex;flex-direction:column;gap:4px">
@@ -1534,60 +1530,4 @@ function resetAdvisor(){
 }
 </script>
 </body>
-</html>// ── COMPOSITE SCORE v2 ──────────────────────────────────────────────────────────────
-function scoreVal(v, thresholds, fallback=50) {
-  if (v == null || isNaN(v)) return fallback;
-  for (const [threshold, score] of thresholds) { if (v > threshold) return score; }
-  return thresholds[thresholds.length-1][1];
-}
-function avgValid(vals) {
-  const valid = vals.filter(v => v != null && !isNaN(v));
-  return valid.length ? Math.round(valid.reduce((a,b)=>a+b,0)/valid.length) : null;
-}
-function computeCompositeScore(data) {
-  const { reco, metrics, earnings, quote } = data;
-  const m = metrics?.metric || {};
-  const scores = {};
-  const weights = { analyst:0.25, valuation:0.20, growth:0.20, profitability:0.15, momentum:0.10, health:0.10 };
-
-  // 1. ANALYST (25%)
-  if (reco?.length) {
-    const r=reco[0], sb=r.strongBuy||0, b=r.buy||0, h=r.hold||0, s=r.sell||0, ss=r.strongSell||0, t=sb+b+h+s+ss;
-    scores.analyst = t ? Math.round((sb*100+b*75+h*50+s*25)/t) : null;
-  }
-  // 2. VALUATION (20%)
-  { const vals=[];
-    const pe=m.peBasicExclExtraTTM; if(pe!=null&&pe>0&&pe<500) vals.push(scoreVal(pe,[[15,90],[20,80],[30,65],[40,50],[60,35],[9999,20]]));
-    const ps=m.psTTM; if(ps!=null&&ps>0) vals.push(scoreVal(ps,[[1,90],[2,75],[4,60],[8,40],[9999,25]]));
-    const ev=m.evEbitdaTTM; if(ev!=null&&ev>0&&ev<200) vals.push(scoreVal(ev,[[8,90],[12,75],[18,60],[25,40],[9999,20]]));
-    scores.valuation=avgValid(vals); }
-  // 3. GROWTH (20%)
-  { const vals=[];
-    const rg=m.revenueGrowthTTMYoy??m.revenueGrowthQuarterlyYoy; if(rg!=null) vals.push(scoreVal(rg,[[30,90],[20,80],[10,70],[0,55],[-10,35],[-9999,15]]));
-    const eg=m.epsGrowthTTMYoy??m.epsGrowthQuarterlyYoy; if(eg!=null) vals.push(scoreVal(eg,[[30,90],[20,80],[10,70],[0,55],[-10,35],[-9999,15]]));
-    const fcf=m.freeCashFlowMarginTTM??m.fcfMarginTTM; if(fcf!=null) vals.push(scoreVal(fcf,[[20,90],[10,75],[0,55],[-9999,30]]));
-    scores.growth=avgValid(vals); }
-  // 4. PROFITABILITY (15%)
-  { const vals=[];
-    const gm=m.grossMarginTTM??m.grossMarginAnnual; if(gm!=null) vals.push(scoreVal(gm,[[60,90],[40,75],[25,60],[10,45],[-9999,25]]));
-    const om=m.operatingMarginTTM??m.operatingMarginAnnual; if(om!=null) vals.push(scoreVal(om,[[25,90],[15,75],[8,60],[0,45],[-9999,20]]));
-    const roe=m.roeTTM??m.roeAnnual; if(roe!=null) vals.push(scoreVal(roe,[[25,90],[15,75],[8,60],[0,40],[-9999,15]]));
-    scores.profitability=avgValid(vals); }
-  // 5. MOMENTUM (10%)
-  { const vals=[];
-    const r13=m['13WeekPriceReturnDaily']; if(r13!=null) vals.push(scoreVal(r13,[[20,85],[10,75],[0,60],[-10,45],[-9999,25]]));
-    const r26=m['26WeekPriceReturnDaily']; if(r26!=null) vals.push(scoreVal(r26,[[30,85],[15,75],[0,60],[-15,45],[-9999,25]]));
-    scores.momentum=avgValid(vals); }
-  // 6. FINANCIAL HEALTH (10%)
-  { const vals=[];
-    const de=m.debtToEquityAnnual; if(de!=null&&de>=0) vals.push(scoreVal(de,[[0.3,90],[0.6,75],[1.0,60],[2.0,45],[9999,25]]));
-    const cr=m.currentRatioAnnual; if(cr!=null) vals.push(scoreVal(cr,[[2,85],[1.5,70],[1,55],[0,35]]));
-    const ic=m.interestCoverageAnnual; if(ic!=null) vals.push(scoreVal(ic,[[10,90],[5,75],[2,55],[0,40],[-9999,20]]));
-    scores.health=avgValid(vals); }
-
-  let total=0, weightSum=0;
-  for(const [k,v] of Object.entries(scores)) { if(v!=null){total+=v*weights[k];weightSum+=weights[k];} }
-  return { composite: weightSum>0?Math.round(total/weightSum):50, scores };
-}
-
-
+</html>
