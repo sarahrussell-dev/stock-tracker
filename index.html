@@ -1473,29 +1473,82 @@ async function removeWatching(sym){await deleteWatchItem(sym);await renderWatchi
 async function loadNews(forceRefresh){
   if(forceRefresh){Object.keys(memCache).forEach(k=>{if(k.includes('/news'))delete memCache[k];});}
   document.getElementById('news-list').innerHTML=`<div class="loading"><span class="spinner"></span>Loading...</div>`;
-  try{
-    const news=await fhGet('/news?category=general');
-    if(!news?.length){document.getElementById('news-list').innerHTML='<div style="font-size:13px;color:var(--text3)">No news available.</div>';return;}
-    window._nd={};
-    const html=news.slice(0,30).map((n,idx)=>{
-      const age=Math.round((Date.now()-n.datetime*1000)/3600000);
-      const ageStr=age<1?'<1h ago':age<24?age+'h ago':Math.round(age/24)+'d ago';
-      const related=(n.related||'').split(',').map(s=>s.trim()).filter(s=>s&&s.length>=1&&s.length<=5);
-      const myTickers=related.filter(s=>portfolio.find(p=>p.sym===s)||watching.find(w=>w.sym===s));
-      window._nd[idx]={headline:n.headline,url:n.url||'#',related};
-      return `<div class="news-card">
-        <div class="news-hl" onclick="window.open(window._nd[${idx}].url,'_blank')">${n.headline}</div>
-        <div class="news-meta">
-          <span>${n.source}</span><span>·</span><span>${ageStr}</span>
-          ${related.length?`<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${related.slice(0,4).join(' · ')}</span>`:''}
-          ${myTickers.length?`<span style="color:var(--accent);font-size:10px;font-family:var(--mono)">📌 ${myTickers.join(', ')}</span>`:''}
-          <button class="refresh-btn" onclick="var d=window._nd[${idx}];summarizeNewsInline('ni${idx}',d.headline,d.url,d.related)">✦ Summarize</button>
-        </div>
-        <div id="summary-ni${idx}" style="display:none;background:var(--bg3);border-radius:6px;padding:0.65rem 0.8rem;margin-top:8px;border-left:2px solid var(--accent)"></div>
-      </div>`;
-    }).join('');
-    document.getElementById('news-list').innerHTML=html;
-  }catch(e){document.getElementById('news-list').innerHTML='<div style="font-size:12px;color:var(--red)">Failed to load news.</div>';}
+
+  const mySyms = [...new Set([...portfolio.map(p=>p.sym),...watching.map(w=>w.sym)])];
+  const today = new Date().toISOString().slice(0,10);
+  const from3d = (()=>{const d=new Date();d.setDate(d.getDate()-3);return d.toISOString().slice(0,10);})();
+
+  let generalNews=[], companyNewsMap={};
+  try {
+    const fetches=[fhGet('/news?category=general')];
+    mySyms.forEach(sym=>fetches.push(
+      fhGet(`/company-news?symbol=${sym}&from=${from3d}&to=${today}`)
+        .then(r=>({sym,articles:r||[]})).catch(()=>({sym,articles:[]}))
+    ));
+    const results=await Promise.all(fetches);
+    generalNews=results[0]||[];
+    for(let i=1;i<results.length;i++){const{sym,articles}=results[i];companyNewsMap[sym]=articles.slice(0,3);}
+  } catch(e) {
+    document.getElementById('news-list').innerHTML='<div style="font-size:12px;color:var(--red)">Failed to load news.</div>';
+    return;
+  }
+
+  window._nd={};
+  let html='';
+
+  // ── MY STOCKS SECTION ──
+  if(mySyms.length){
+    const seen=new Set(), myArticles=[];
+    mySyms.forEach(sym=>{
+      (companyNewsMap[sym]||[]).forEach(n=>{
+        if(!seen.has(n.headline)){seen.add(n.headline);myArticles.push({...n,_sym:sym});}
+      });
+    });
+    if(myArticles.length){
+      myArticles.sort((a,b)=>b.datetime-a.datetime);
+      html+=`<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75rem;padding-bottom:6px;border-bottom:1px solid var(--border)">📌 Your stocks</div>`;
+      myArticles.slice(0,10).forEach((n,idx)=>{
+        const cardId='my'+idx;
+        window._nd[cardId]={headline:n.headline,url:n.url||'#',related:[n._sym]};
+        const age=Math.round((Date.now()-n.datetime*1000)/3600000);
+        const ageStr=age<1?'<1h ago':age<24?age+'h ago':Math.round(age/24)+'d ago';
+        html+=`<div class="news-card">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span class="badge b-b" style="font-size:10px;padding:1px 7px">${n._sym}</span>
+            <span style="font-size:10px;color:var(--text3)">${ageStr}</span>
+          </div>
+          <div class="news-hl" onclick="window.open(window._nd['${cardId}'].url,'_blank')">${n.headline}</div>
+          <div class="news-meta"><span>${n.source}</span>
+            <button class="refresh-btn" onclick="var d=window._nd['${cardId}'];summarizeNewsInline('${cardId}',d.headline,d.url,d.related)">✦ Summarize</button>
+          </div>
+          <div id="summary-${cardId}" style="display:none;background:var(--bg3);border-radius:6px;padding:0.65rem 0.8rem;margin-top:8px;border-left:2px solid var(--accent)"></div>
+        </div>`;
+      });
+    }
+    html+=`<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;margin:1.25rem 0 0.75rem;padding-bottom:6px;border-bottom:1px solid var(--border)">🌐 Market news</div>`;
+  }
+
+  // ── GENERAL NEWS ──
+  if(!generalNews?.length){html+='<div style="font-size:13px;color:var(--text3)">No news available.</div>';document.getElementById('news-list').innerHTML=html;return;}
+  generalNews.slice(0,30).forEach((n,idx)=>{
+    const age=Math.round((Date.now()-n.datetime*1000)/3600000);
+    const ageStr=age<1?'<1h ago':age<24?age+'h ago':Math.round(age/24)+'d ago';
+    const related=(n.related||'').split(',').map(s=>s.trim()).filter(s=>s&&s.length>=1&&s.length<=5);
+    const myTickers=related.filter(s=>portfolio.find(p=>p.sym===s)||watching.find(w=>w.sym===s));
+    const cardId='ni'+idx;
+    window._nd[cardId]={headline:n.headline,url:n.url||'#',related};
+    html+=`<div class="news-card">
+      <div class="news-hl" onclick="window.open(window._nd['${cardId}'].url,'_blank')">${n.headline}</div>
+      <div class="news-meta">
+        <span>${n.source}</span><span>·</span><span>${ageStr}</span>
+        ${related.length?`<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${related.slice(0,4).join(' · ')}</span>`:''}
+        ${myTickers.length?`<span style="color:var(--accent);font-size:10px;font-family:var(--mono)">📌 ${myTickers.join(', ')}</span>`:''}
+        <button class="refresh-btn" onclick="var d=window._nd['${cardId}'];summarizeNewsInline('${cardId}',d.headline,d.url,d.related)">✦ Summarize</button>
+      </div>
+      <div id="summary-${cardId}" style="display:none;background:var(--bg3);border-radius:6px;padding:0.65rem 0.8rem;margin-top:8px;border-left:2px solid var(--accent)"></div>
+    </div>`;
+  });
+  document.getElementById('news-list').innerHTML=html;
 }
 
 // ── TABS ──────────────────────────────────────────────────────────────
