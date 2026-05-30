@@ -1029,7 +1029,7 @@ async function loadScanFromDB() {
   try {
     const token = getAccessToken();
     const r = await fetch(SUPABASE_URL + '/rest/v1/scan_results?select=sym,data,updated_at&order=sym.asc&limit=2000', {
-      headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
+      headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token, 'Range-Unit': 'items', 'Range': '0-999' }
     });
     if (!r.ok) throw new Error(r.status);
     const rows = await r.json();
