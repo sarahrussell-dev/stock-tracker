@@ -524,7 +524,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
           <button class="qq-btn" onclick="askChat('What should a long-term investor be doing in this market?')">Long-term strategy?</button>
         </div>
         <div class="chat-messages" id="chat-messages">
-          <div class="chat-msg ai">Hey! I have full context on your portfolio including positions, cost basis, and 5-factor signal scores. Ask me anything — "should I sell X?", "what's my biggest risk?", "which position looks best right now?"</div>
+          <div class="chat-msg ai">Hey! I have full context on your portfolio including positions, cost basis, 6-factor signal scores, and insider activity. Ask me anything — "should I sell X?", "what's my biggest risk?", "which position looks best right now?"</div>
         </div>
         <div class="chat-input-row">
           <input type="text" id="chat-input" placeholder="Ask about your portfolio..." onkeydown="if(event.key==='Enter')askChat()"/>
@@ -1232,12 +1232,12 @@ Rules:
 - No disclaimers. No "I'm not a financial advisor." No hedging. Give real takes.
 - Prices shown are live as of this session.`;
 
-async function getPortfolioStocks(){return portfolio.length?Promise.all(portfolio.map(p=>fetchStockData(p.sym))):[];}
+async function getPortfolioStocks(){return portfolio.length?Promise.all(portfolio.map(p=>{const dbScore=scanResults.find(r=>r.sym===p.sym)?.score??null;return fetchStockData(p.sym).then(s=>{if(s&&dbScore!==null)s.score=dbScore;return s;});})):[];}
 function buildPortfolioContext(stocks){
   if(!portfolio.length)return 'No portfolio positions.';
   return portfolio.map((p,i)=>{
     const s=stocks[i]||{};const mv=(s.price||0)*p.shares,pl=mv-p.avgCost*p.shares,plp=p.avgCost>0?(pl/(p.avgCost*p.shares))*100:0;
-    return `${p.sym}: ${p.shares} shares @ avg $${p.avgCost}, current $${s.price||'?'}, value $${mv.toFixed(0)}, P&L ${plp>=0?'+':''}${plp.toFixed(1)}% ($${pl.toFixed(0)}), composite ${s.score||'?'}/100 [An:${s.scores?.analyst??'—'} Val:${s.scores?.valuation??'—'} Gr:${s.scores?.growth??'—'} Pr:${s.scores?.profitability??'—'} Mo:${s.scores?.momentum??'—'} Hl:${s.scores?.health??'—'}], sector: ${s.sector||'?'}`;
+    return `${p.sym}: ${p.shares} shares @ avg $${p.avgCost}, current $${s.price||'?'}, value $${mv.toFixed(0)}, P&L ${plp>=0?'+':''}${plp.toFixed(1)}% ($${pl.toFixed(0)}), composite ${s.score||'?'}/100 [An:${s.scores?.analyst??'—'} Val:${s.scores?.valuation??'—'} Gr:${s.scores?.growth??'—'} Pr:${s.scores?.profitability??'—'} Mo:${s.scores?.momentum??'—'} Hl:${s.scores?.health??'—'}], insider: ${s.insiderBuying||0} buys/${s.insiderSelling||0} sells (6mo), sector: ${s.sector||'?'}`;
   }).join('\n');
 }
 
@@ -1579,7 +1579,7 @@ function resetAdvisor(){
   document.getElementById('advisor-health').innerHTML='';
   document.getElementById('advisor-positions').innerHTML='';
   const msgs=document.getElementById('chat-messages');
-  if(msgs)msgs.innerHTML='<div class="chat-msg ai">Hey! I know your portfolio and current market signals. Ask me anything — "should I sell AAPL?", "what\'s my biggest risk?", "should I take profits on NVDA?" — whatever\'s on your mind.</div>';
+  if(msgs)msgs.innerHTML='<div class="chat-msg ai">Hey! I know your portfolio and current market signals. Ask me anything — "should I sell TSLA?", "what\'s my biggest risk?", "should I take profits on NVDA?" — whatever\'s on your mind.</div>';
 }
 </script>
 </body>
