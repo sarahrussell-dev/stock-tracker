@@ -1259,7 +1259,7 @@ async function runFullAdvisor(){
       const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:600,system:ADVISOR_SYSTEM,messages:[{role:'user',content:advisorPrompt}]});
       const text=data.content?.[0]?.text||'Analysis unavailable.';
       const firstWord=text.split(/[\s\n]/)[0].replace(/[^A-Z]/g,'');
-      const cleanText=text.replace(/^\*\*(HOLD|SELL|TRIM|ADD|BUY)\*\*\s*/i,'').replace(/^(HOLD|SELL|TRIM|ADD|BUY)[:\s—-]*/i,'');
+      const cleanText=text.replace(/^\*\*(HOLD|SELL|TRIM|ADD|BUY)\*\*[\s.:—-]*/i,'').replace(/^(HOLD|SELL|TRIM|ADD|BUY)[\s.:—-]*/i,'');
       const vEl=document.getElementById('verdict-'+p.sym);const rEl=document.getElementById('reasoning-'+p.sym);
       if(vEl){const cls=firstWord==='SELL'?'verdict-sell':firstWord==='TRIM'?'verdict-trim':firstWord==='ADD'||firstWord.startsWith('BUY')?'verdict-buy':'verdict-hold';vEl.textContent=firstWord||'HOLD';vEl.className='pac-verdict '+cls;}
       if(rEl)rEl.innerHTML=formatAdvisorText(cleanText);
@@ -1304,15 +1304,9 @@ async function runBestWorst(){
 function formatAdvisorText(text) {
   if (!text) return '';
   let t = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  // Style verdict at start of response
-  t = t.replace(/^\*\*(HOLD|SELL|TRIM|ADD|BUY)\*\*/i, function(m, word) {
-    const upper = word.toUpperCase();
-    const cls = (upper==='SELL') ? 'verdict-sell'
-               : (upper==='ADD'||upper==='BUY') ? 'verdict-buy'
-               : (upper==='TRIM') ? 'verdict-trim'
-               : 'verdict-hold';
-    return '<span class="pac-verdict ' + cls + '" style="display:inline-block;margin-bottom:6px">' + upper + '</span>';
-  });
+  // Strip any leading verdict word in case it wasn't caught earlier
+  t = t.replace(/^\*\*(HOLD|SELL|TRIM|ADD|BUY)\*\*[\s.:—-]*/i,'');
+  t = t.replace(/^(HOLD|SELL|TRIM|ADD|BUY)[\s.:—-]*/i,'');
   // Bold remaining **text**
   t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   // Line breaks
