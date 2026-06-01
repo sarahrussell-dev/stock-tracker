@@ -1164,7 +1164,7 @@ async function analyzeStock(){
       <div class="ai-box"><div class="ai-label"><span class="spinner" id="ai-spin"></span> AI Analysis</div><div class="ai-text" id="ai-output">Analyzing ${sym}...</div></div>
       <div style="display:flex;gap:6px;margin-top:0.9rem;flex-wrap:wrap">
         <button class="ghost" onclick="loadCompanyNews('${sym}','cnews-box')">Recent news</button>
-        ${pos?`<button class="ghost" onclick="askShouldISell('${sym}')">Should I sell? 🤖</button>`:`<button class="ghost" onclick="addWatchingDirect('${sym}')">+ Watch</button>`}
+        ${pos?`<button class="ghost" onclick="askShouldISell('${sym}')">Should I sell? 🤖</button>`:`<button class="ghost" onclick="addWatchingDirect('${sym}',this)">+ Watch</button>`}
       </div>
       <div id="cnews-box" style="margin-top:0.75rem"></div>
     </div>`;
@@ -1259,9 +1259,10 @@ async function runFullAdvisor(){
       const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:600,system:ADVISOR_SYSTEM,messages:[{role:'user',content:advisorPrompt}]});
       const text=data.content?.[0]?.text||'Analysis unavailable.';
       const firstWord=text.split(/[\s\n]/)[0].replace(/[^A-Z]/g,'');
+      const cleanText=text.replace(/^\*\*(HOLD|SELL|TRIM|ADD|BUY)\*\*\s*/i,'').replace(/^(HOLD|SELL|TRIM|ADD|BUY)[:\s—-]*/i,'');
       const vEl=document.getElementById('verdict-'+p.sym);const rEl=document.getElementById('reasoning-'+p.sym);
-      if(vEl){const cls=firstWord==='SELL'||firstWord==='TRIM'?'verdict-sell':firstWord==='ADD'||firstWord.startsWith('BUY')?'verdict-buy':'verdict-hold';vEl.textContent=firstWord||'HOLD';vEl.className='pac-verdict '+cls;}
-      if(rEl)rEl.innerHTML=formatAdvisorText(text);
+      if(vEl){const cls=firstWord==='SELL'?'verdict-sell':firstWord==='TRIM'?'verdict-trim':firstWord==='ADD'||firstWord.startsWith('BUY')?'verdict-buy':'verdict-hold';vEl.textContent=firstWord||'HOLD';vEl.className='pac-verdict '+cls;}
+      if(rEl)rEl.innerHTML=formatAdvisorText(cleanText);
     }catch(e){const el=document.getElementById('reasoning-'+p.sym);if(el)el.textContent='Analysis unavailable.';}
   }
 }
@@ -1481,11 +1482,9 @@ async function addWatching(){
   document.getElementById('watch-input').value='';
   await renderWatching();
 }
-async function addWatchingDirect(sym){
+async function addWatchingDirect(sym, btn){
   if(!watching.find(w=>w.sym===sym)&&!portfolio.find(p=>p.sym===sym)){
     await saveWatchItem(sym);
-    // Update button to show confirmation
-    const btn = document.querySelector(`button[onclick="addWatchingDirect('${sym}')"]`);
     if(btn){ btn.textContent='✓ Added'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)'; btn.disabled=true; }
   }
 }
