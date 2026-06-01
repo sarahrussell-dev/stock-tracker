@@ -1131,7 +1131,7 @@ function quickResearch(sym){switchTabDirect('research');document.querySelectorAl
 async function analyzeStock(){
   const sym=document.getElementById('research-input').value.trim().toUpperCase();if(!sym)return;
   document.getElementById('research-result').innerHTML=`<div class="loading"><span class="spinner"></span>Loading full data for ${sym}...</div>`;
-  const dbScore=memCache[sym]?.score??null;
+  const dbScore=scanResults.find(r=>r.sym===sym)?.score??memCache[sym]?.score??null;
   delete memCache[sym];try{localStorage.removeItem('sc_'+sym);}catch{}
   const s=await fetchStockData(sym);
   if(s&&dbScore!==null) s.score=dbScore;
