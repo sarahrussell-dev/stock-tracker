@@ -1164,7 +1164,7 @@ async function analyzeStock(){
       <div class="ai-box"><div class="ai-label"><span class="spinner" id="ai-spin"></span> AI Analysis</div><div class="ai-text" id="ai-output">Analyzing ${sym}...</div></div>
       <div style="display:flex;gap:6px;margin-top:0.9rem;flex-wrap:wrap">
         <button class="ghost" onclick="loadCompanyNews('${sym}','cnews-box')">Recent news</button>
-        ${pos?`<button class="ghost" onclick="askShouldISell('${sym}')">Should I sell? 🤖</button>`:`<button class="ghost" onclick="addWatchingDirect('${sym}')">+ Watching</button>`}
+        ${pos?`<button class="ghost" onclick="askShouldISell('${sym}')">Should I sell? 🤖</button>`:`<button class="ghost" onclick="addWatchingDirect('${sym}')">+ Watch</button>`}
       </div>
       <div id="cnews-box" style="margin-top:0.75rem"></div>
     </div>`;
@@ -1261,7 +1261,7 @@ async function runFullAdvisor(){
       const firstWord=text.split(/[\s\n]/)[0].replace(/[^A-Z]/g,'');
       const vEl=document.getElementById('verdict-'+p.sym);const rEl=document.getElementById('reasoning-'+p.sym);
       if(vEl){const cls=firstWord==='SELL'||firstWord==='TRIM'?'verdict-sell':firstWord==='ADD'||firstWord.startsWith('BUY')?'verdict-buy':'verdict-hold';vEl.textContent=firstWord||'HOLD';vEl.className='pac-verdict '+cls;}
-      if(rEl)rEl.textContent=text;
+      if(rEl)rEl.innerHTML=formatAdvisorText(text);
     }catch(e){const el=document.getElementById('reasoning-'+p.sym);if(el)el.textContent='Analysis unavailable.';}
   }
 }
@@ -1296,8 +1296,27 @@ async function runBestWorst(){
     const bwPrompt = 'Portfolio:\n'+ctx+'\n\nIdentify: (1) best position to hold or add to now, considering composite score, factor breakdown, and P&L. (2) most concerning position. Be specific about factor scores. 3-4 sentences each.';
     const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:800,system:ADVISOR_SYSTEM,messages:[{role:'user',content:bwPrompt}]});
     
-    posDiv.innerHTML=`<div class="health-card"><div style="font-size:13px;font-weight:600;margin-bottom:0.75rem">🎯 Best &amp; Worst Positions</div><div class="ai-text">${data.content?.[0]?.text||''}</div></div>`;
+    posDiv.innerHTML=`<div class="health-card"><div style="font-size:13px;font-weight:600;margin-bottom:0.75rem">🎯 Best &amp; Worst Positions</div><div class="ai-text">${formatAdvisorText(data.content?.[0]?.text||'')}</div></div>`;
   }catch(e){posDiv.innerHTML='<div style="font-size:13px;color:var(--red)">Analysis failed.</div>';}
+}
+
+function formatAdvisorText(text) {
+  if (!text) return '';
+  let t = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Style verdict at start of response
+  t = t.replace(/^\*\*(HOLD|SELL|TRIM|ADD|BUY)\*\*/i, function(m, word) {
+    const upper = word.toUpperCase();
+    const cls = (upper==='SELL') ? 'verdict-sell'
+               : (upper==='ADD'||upper==='BUY') ? 'verdict-buy'
+               : (upper==='TRIM') ? 'verdict-trim'
+               : 'verdict-hold';
+    return '<span class="pac-verdict ' + cls + '" style="display:inline-block;margin-bottom:6px">' + upper + '</span>';
+  });
+  // Bold remaining **text**
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Line breaks
+  t = t.replace(/\n/g, '<br>');
+  return t;
 }
 
 async function askChat(preset){
@@ -1344,7 +1363,7 @@ async function askChat(preset){
     const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:1000,system:ADVISOR_SYSTEM+portfolioCtx+signalCtx+newsCtx,messages:chatHistory.slice(-10)});
     const text=data.content?.[0]?.text||'Could not get a response.';
     chatHistory.push({role:'assistant',content:text});
-    thinkingEl.className='chat-msg ai';thinkingEl.textContent=text;
+    thinkingEl.className='chat-msg ai';thinkingEl.innerHTML=formatAdvisorText(text);
   }catch(e){thinkingEl.className='chat-msg ai';thinkingEl.textContent='Error — check your connection.';}
   msgs.scrollTop=msgs.scrollHeight;
 }
@@ -1465,6 +1484,9 @@ async function addWatching(){
 async function addWatchingDirect(sym){
   if(!watching.find(w=>w.sym===sym)&&!portfolio.find(p=>p.sym===sym)){
     await saveWatchItem(sym);
+    // Update button to show confirmation
+    const btn = document.querySelector(`button[onclick="addWatchingDirect('${sym}')"]`);
+    if(btn){ btn.textContent='✓ Added'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)'; btn.disabled=true; }
   }
 }
 async function removeWatching(sym){await deleteWatchItem(sym);await renderWatching();}
