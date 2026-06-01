@@ -1339,17 +1339,48 @@ async function askChat(preset){
     }
   } catch {}
 
-  // Find any stock tickers mentioned in the question and inject their signal scores
+    // Find any stock tickers mentioned in the question and inject their signal scores
   let signalCtx = '';
   if(scanResults && scanResults.length) {
-    const tickerMatches = question.toUpperCase().match(/\b[A-Z]{1,5}\b/g) || [];
+    const q = question.toUpperCase();
+    const tickerMatches = q.match(/\b[A-Z]{1,5}\b/g) || [];
     const mentioned = scanResults.filter(s => tickerMatches.includes(s.sym));
-    if(mentioned.length) {
+
+    // Detect ranking/screening questions and inject top stocks by relevant factor
+    const isRanking = /top|best|highest|strongest|worst|lowest|weakest|most|rank|which stock/i.test(question);
+    const factorMap = {
+      momentum: /momentum|strength|trend|technical|breakout/i,
+      valuation: /cheap|value|valuat|undervalued|p.e|pe ratio/i,
+      growth: /growth|growing|revenue|earnings growth/i,
+      profitability: /profit|margin|roe|return on/i,
+      health: /health|balance sheet|debt|financial strength/i,
+      analyst: /analyst|wall street|consensus|rating/i,
+    };
+
+    if (isRanking) {
+      let factor = 'score';
+      let factorLabel = 'composite';
+      for (const [f, regex] of Object.entries(factorMap)) {
+        if (regex.test(question)) { factor = f; factorLabel = f; break; }
+      }
+      const sorted = [...scanResults].sort((a, b) => {
+        const va = factor === 'score' ? a.score : (a.scores?.[factor] ?? 0);
+        const vb = factor === 'score' ? b.score : (b.scores?.[factor] ?? 0);
+        return vb - va;
+      });
+      const top15 = sorted.slice(0, 15);
+      const lines = top15.map(s => {
+        const sc = s.scores || {};
+        const fval = factor === 'score' ? s.score : (sc[factor] ?? '—');
+        return s.sym + ' (' + fval + '/' + factorLabel + '): composite ' + s.score + '/100 · $' + (s.price?.toFixed(2)) + ' · ' + (s.changePct>=0?'+':'') + s.changePct?.toFixed(2) + '%';
+      });
+      signalCtx = '\n\nTop 15 stocks by ' + factorLabel + ' score from our 260-stock universe:\n' + lines.join('\n');
+    } else if (mentioned.length) {
       const lines = mentioned.map(s => {
         const sc = s.scores || {};
-        return `${s.sym}: composite ${s.score}/100 (Analyst:${sc.analyst??'—'} Valuation:${sc.valuation??'—'} Growth:${sc.growth??'—'} Profit:${sc.profitability??'—'} Momentum:${sc.momentum??'—'} Health:${sc.health??'—'}) · $${s.price?.toFixed(2)} · ${s.changePct>=0?'+':''}${s.changePct?.toFixed(2)}%${s.pe?' · P/E '+s.pe:''}${s.divYield?' · '+s.divYield+'% div':''}`;
+        return s.sym + ': composite ' + s.score + '/100 (Analyst:' + (sc.analyst??'—') + ' Valuation:' + (sc.valuation??'—') + ' Growth:' + (sc.growth??'—') + ' Profit:' + (sc.profitability??'—') + ' Momentum:' + (sc.momentum??'—') + ' Health:' + (sc.health??'—') + ') · $' + s.price?.toFixed(2) + ' · ' + (s.changePct>=0?'+':'') + s.changePct?.toFixed(2) + '%' + (s.pe?' · P/E '+s.pe:'');
       });
-      signalCtx = '\n\nSignal scores for stocks mentioned:\n' + lines.join('\n');
+      signalCtx = '\n\nSignal scores for mentioned stocks:\n' + lines.join('\n');
     }
   }
 
