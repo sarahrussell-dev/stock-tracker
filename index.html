@@ -1255,7 +1255,7 @@ async function runFullAdvisor(){
     posDiv.appendChild(card);
     try{
       const fa = s.scores?.analyst??'N/A', fv = s.scores?.valuation??'N/A', fg = s.scores?.growth??'N/A', fp = s.scores?.profitability??'N/A', fm = s.scores?.momentum??'N/A', fh = s.scores?.health??'N/A';
-      const advisorPrompt = 'Portfolio:\n'+ctx+'\n\nFocus on '+p.sym+'. Owns '+p.shares+' shares at avg $'+p.avgCost+'. Current $'+(s.price||'?')+'. P&L: '+(plp>=0?'+':'')+plp.toFixed(1)+'%. Composite: '+s.score+'/100. 6-factor scores: Analyst='+fa+' Valuation='+fv+' Growth='+fg+' Profitability='+fp+' Momentum='+fm+' Health='+fh+'.\n\nVerdict (HOLD/SELL/ADD/TRIM) and 2-3 sentences. Start with verdict in caps.';
+      const advisorPrompt = 'Portfolio:\n'+ctx+'\n\nFocus on '+p.sym+'. Owns '+p.shares+' shares at avg $'+p.avgCost+'. Current $'+(s.price||'?')+'. P&L: '+(plp>=0?'+':'')+plp.toFixed(1)+'%. Composite: '+s.score+'/100. 6-factor scores: Analyst='+fa+' Valuation='+fv+' Growth='+fg+' Profitability='+fp+' Momentum='+fm+' Health='+fh+'.\n\nFirst line must be exactly one word: HOLD, SELL, ADD, or TRIM. Then 2-3 sentences of reasoning WITHOUT repeating the verdict word.';
       const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:600,system:ADVISOR_SYSTEM,messages:[{role:'user',content:advisorPrompt}]});
       const text=data.content?.[0]?.text||'Analysis unavailable.';
       const firstWord=text.split(/[\s\n]/)[0].replace(/[^A-Z]/g,'');
