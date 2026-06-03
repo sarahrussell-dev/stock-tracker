@@ -101,7 +101,7 @@ body{min-height:100vh;}
 .stock-card:hover{border-color:var(--border2);background:var(--bg3);}
 .sc-sym{font-family:var(--mono);font-size:14px;font-weight:500;}
 .sc-name{font-size:11px;color:var(--text2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;}
-.sc-bar-row{display:flex;align-items:center;gap:8px;margin-top:5px;width:400px;flex-shrink:0;}
+.sc-bar-row{display:flex;align-items:center;gap:8px;margin-top:5px;width:60%;flex-shrink:0;}
 .sc-bar-track{flex:1;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;display:flex;gap:1px;}
 .sc-bar-seg{flex:1;height:100%;border-radius:1px;}
 .sc-score{font-size:10px;font-family:var(--mono);color:var(--text3);white-space:nowrap;}
@@ -326,6 +326,8 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
   .sc-price{ font-size: 13px; }
   .sc-name{ max-width: 200px; }
   .sc-bar-row{ width: 200px; }
+  .sc-right{ max-width: 80px; }
+  .sc-pe{ white-space: normal; overflow-wrap: break-word; }
 
   /* Watch cards */
   .watch-card{ grid-template-columns: 55px 1fr auto auto; gap: 8px; }
@@ -362,7 +364,7 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
   .tier-chip{ font-size: 10px; padding: 2px 7px; }
 
   /* Progress bar label */
-  #progress-label{ font-size: 10px; }
+  #progress-label{ font-size: 10px; white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
 
   /* Pos actions wrap */
   .pos-actions{ flex-wrap: wrap; gap: 4px; }
