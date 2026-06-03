@@ -101,7 +101,7 @@ body{min-height:100vh;}
 .stock-card:hover{border-color:var(--border2);background:var(--bg3);}
 .sc-sym{font-family:var(--mono);font-size:14px;font-weight:500;}
 .sc-name{font-size:11px;color:var(--text2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;}
-.sc-bar-row{display:flex;align-items:center;gap:8px;margin-top:5px;width:60%;flex-shrink:0;}
+.sc-bar-row{display:flex;align-items:center;gap:8px;margin-top:5px;width:80%;flex-shrink:0;}
 .sc-bar-track{flex:1;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;display:flex;gap:1px;}
 .sc-bar-seg{flex:1;height:100%;border-radius:1px;}
 .sc-score{font-size:10px;font-family:var(--mono);color:var(--text3);white-space:nowrap;}
@@ -317,7 +317,8 @@ button.ghost:hover{color:var(--text);border-color:var(--text2);}
   .pos-stats{ grid-template-columns: repeat(2,1fr); gap: 5px; }
   .pac-stats{ grid-template-columns: repeat(2,1fr); }
   .signal-breakdown{ grid-template-columns: repeat(3,1fr); gap: 4px; }
-  .summary-row{ grid-template-columns: repeat(3,1fr); gap: 6px; }
+  .summary-row{ grid-template-columns: 1fr 1fr; gap: 6px; }
+  .summary-row .sum-card:last-child{ grid-column: 1 / -1; }
   .add-grid{ grid-template-columns: 1fr 1fr; gap: 6px; }
   .add-grid>div:last-child{ grid-column: 1/-1; }
 
