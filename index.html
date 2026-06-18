@@ -1191,7 +1191,7 @@ async function analyzeStock(){
     const posNote = pos ? ' User owns '+pos.shares+' shares at avg $'+pos.avgCost+'.' : '';
     const sa = s.scores?.analyst??'N/A', sv = s.scores?.valuation??'N/A', sg = s.scores?.growth??'N/A', sp = s.scores?.profitability??'N/A', sm = s.scores?.momentum??'N/A', sh = s.scores?.health??'N/A';
     const researchPrompt = 'Analyze '+sym+' ('+s.name+'). Composite: '+s.score+'/100 ('+getTierLabel(s.score)+'). 6-factor scores: Analyst='+sa+', Valuation='+sv+', Growth='+sg+', Profitability='+sp+', Momentum='+sm+', Health='+sh+'. Price: $'+s.price+', Daily: '+fmt(s.changePct||0)+', 52W: $'+(s.low52||'?')+'–$'+(s.high52||'?')+'. P/E: '+(s.pe||'N/A')+', Rev growth: '+(s.revenueGrowth!=null?s.revenueGrowth.toFixed(1):'N/A')+'%, EPS growth: '+(s.epsGrowth!=null?s.epsGrowth.toFixed(1):'N/A')+'%, Net margin: '+(s.netMargin!=null?s.netMargin.toFixed(1):'N/A')+'%, ROE: '+(s.roe!=null?s.roe.toFixed(1):'N/A')+'%, D/E: '+(s.debtEquity!=null?s.debtEquity.toFixed(2):'N/A')+'. Div yield: '+(s.divYield||'0')+'%. Insider: '+(s.insiderBuying||0)+' buys, '+(s.insiderSelling||0)+' sells (6mo). Last earnings surprise: '+(s.lastEarningsSurprise||'N/A')+'%. Sector: '+s.sector+'.'+posNote;
-    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:1200,system:'You are a concise stock analyst with multi-factor data. Give a 4-5 sentence analysis: what the composite score reflects across factors, biggest fundamental strengths/weaknesses, what insider activity suggests, and whether the price looks attractive. Be specific and direct. No disclaimers.',messages:[{role:'user',content:researchPrompt}]});
+    const data=await claudeFetch({model:'claude-sonnet-4-6',max_tokens:1200,system:'You are a concise stock analyst with multi-factor data. Give a 4-5 sentence analysis: what the composite score reflects across factors, biggest fundamental strengths/weaknesses, what insider activity suggests, and whether the price looks attractive. Be specific and direct. No disclaimers.',messages:[{role:'user',content:researchPrompt}]});
     
     document.getElementById('ai-output').textContent=data.content?.[0]?.text||'Analysis unavailable.';
     document.getElementById('ai-spin')?.remove();
@@ -1229,7 +1229,7 @@ async function summarizeNewsInline(cardId,headline,url,relatedTickers){
   const portfolioNote=ownedRelated.length?`User owns positions in: ${ownedRelated.join(', ')}.`:watchedRelated.length?`User is watching: ${watchedRelated.join(', ')}.`:'';
   try{
     const newsPrompt = 'Headline: "' + headline + '"\nRelated tickers: ' + ((relatedTickers||[]).join(', ')||'none') + '\n' + portfolioNote + '\nSummarize.';
-    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:400,system:'You are a concise financial news analyst. Given a headline provide: 1) A 2-sentence plain-English summary of what happened and why it matters. 2) A "Main takeaway:" line — one sentence on what investors should note. 3) If the user owns or watches related stocks, a "Your portfolio:" line. Keep under 100 words. No disclaimers.',messages:[{role:'user',content:newsPrompt}]});
+    const data=await claudeFetch({model:'claude-sonnet-4-6',max_tokens:400,system:'You are a concise financial news analyst. Given a headline provide: 1) A 2-sentence plain-English summary of what happened and why it matters. 2) A "Main takeaway:" line — one sentence on what investors should note. 3) If the user owns or watches related stocks, a "Your portfolio:" line. Keep under 100 words. No disclaimers.',messages:[{role:'user',content:newsPrompt}]});
     
     const text=data.content?.[0]?.text||'Summary unavailable.';
     summaryEl.innerHTML=`<div style="font-size:12px;color:var(--text2);line-height:1.65">${text.replace(/Main takeaway:/gi,'<strong style="color:var(--accent)">Main takeaway:</strong>').replace(/Your portfolio:/gi,'<strong style="color:var(--green)">Your portfolio:</strong>')}</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><a href="${url}" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none">Read full article ↗</a></div>`;
@@ -1275,7 +1275,7 @@ async function runFullAdvisor(){
     try{
       const fa = s.scores?.analyst??'N/A', fv = s.scores?.valuation??'N/A', fg = s.scores?.growth??'N/A', fp = s.scores?.profitability??'N/A', fm = s.scores?.momentum??'N/A', fh = s.scores?.health??'N/A';
       const advisorPrompt = 'Portfolio:\n'+ctx+'\n\nFocus on '+p.sym+'. Owns '+p.shares+' shares at avg $'+p.avgCost+'. Current $'+(s.price||'?')+'. P&L: '+(plp>=0?'+':'')+plp.toFixed(1)+'%. Composite: '+s.score+'/100. 6-factor scores: Analyst='+fa+' Valuation='+fv+' Growth='+fg+' Profitability='+fp+' Momentum='+fm+' Health='+fh+'.\n\nFirst line must be exactly one word: HOLD, SELL, ADD, or TRIM. Then 2-3 sentences of reasoning WITHOUT repeating the verdict word.';
-      const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:600,system:ADVISOR_SYSTEM,messages:[{role:'user',content:advisorPrompt}]});
+      const data=await claudeFetch({model:'claude-sonnet-4-6',max_tokens:600,system:ADVISOR_SYSTEM,messages:[{role:'user',content:advisorPrompt}]});
       const text=data.content?.[0]?.text||'Analysis unavailable.';
       const firstWord=text.split(/[\s\n]/)[0].replace(/[^A-Z]/g,'');
       const cleanText=text.replace(/^\*\*(HOLD|SELL|TRIM|ADD|BUY)\*\*[\s.:—-]*/i,'').replace(/^(HOLD|SELL|TRIM|ADD|BUY)[\s.:—-]*/i,'');
@@ -1297,7 +1297,7 @@ async function runHealthCheck(){
   try{
     const sectorStr = Object.keys(sectors).map(function(k){return k+': '+((sectors[k]/tv)*100).toFixed(0)+'%';}).join(', ');
     const healthPrompt = 'Portfolio:\n'+ctx+'\n\nTotal: $'+tv.toFixed(0)+'\nSectors: '+sectorStr+'\n\nHealth score out of 100, then bullet-point: diversification, concentration risks, weak factor scores across positions, biggest red flag, one actionable step. Start with "SCORE: XX".';
-    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:800,system:ADVISOR_SYSTEM,messages:[{role:'user',content:healthPrompt}]});
+    const data=await claudeFetch({model:'claude-sonnet-4-6',max_tokens:800,system:ADVISOR_SYSTEM,messages:[{role:'user',content:healthPrompt}]});
     const text=data.content?.[0]?.text||'';
     const scoreMatch=text.match(/SCORE:\s*(\d+)/i);const score=scoreMatch?parseInt(scoreMatch[1]):65;
     const scoreColor=score>=80?'var(--green)':score>=60?'var(--yellow)':'var(--red)';
@@ -1314,7 +1314,7 @@ async function runBestWorst(){
   const ctx=buildPortfolioContext(stocks);
   try{
     const bwPrompt = 'Portfolio:\n'+ctx+'\n\nIdentify: (1) best position to hold or add to now, considering composite score, factor breakdown, and P&L. (2) most concerning position. Be specific about factor scores. 3-4 sentences each.';
-    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:800,system:ADVISOR_SYSTEM,messages:[{role:'user',content:bwPrompt}]});
+    const data=await claudeFetch({model:'claude-sonnet-4-6',max_tokens:800,system:ADVISOR_SYSTEM,messages:[{role:'user',content:bwPrompt}]});
     
     posDiv.innerHTML=`<div class="health-card"><div style="font-size:13px;font-weight:600;margin-bottom:0.75rem">🎯 Best &amp; Worst Positions</div><div class="ai-text">${formatAdvisorText(data.content?.[0]?.text||'')}</div></div>`;
   }catch(e){posDiv.innerHTML='<div style="font-size:13px;color:var(--red)">Analysis failed.</div>';}
@@ -1405,7 +1405,7 @@ async function askChat(preset){
 
   try{
     const portfolioCtx = portfolio.length ? '\n\nUser\'s portfolio:\n'+ctx : '';
-    const data=await claudeFetch({model:'claude-sonnet-4-20250514',max_tokens:1000,system:ADVISOR_SYSTEM+portfolioCtx+signalCtx+newsCtx,messages:chatHistory.slice(-10)});
+    const data=await claudeFetch({model:'claude-sonnet-4-6',max_tokens:1000,system:ADVISOR_SYSTEM+portfolioCtx+signalCtx+newsCtx,messages:chatHistory.slice(-10)});
     const text=data.content?.[0]?.text||'Could not get a response.';
     chatHistory.push({role:'assistant',content:text});
     thinkingEl.className='chat-msg ai';thinkingEl.innerHTML=formatAdvisorText(text);
